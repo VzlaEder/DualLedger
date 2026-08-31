@@ -21,6 +21,7 @@
       <div class="records-badge" v-if="records.length > 0">
         {{ records.length }} registro(s) acumulados
       </div>
+      <ApiKeySetup @key-saved="handleKeySaved" />
       <nav class="nav-tabs">
         <button
           v-for="tab in tabs"
@@ -79,7 +80,9 @@ import ImageUploader from './components/ImageUploader.vue'
 import DataPreview from './components/DataPreview.vue'
 import ExcelExport from './components/ExcelExport.vue'
 import History from './components/History.vue'
+import ApiKeySetup from './components/ApiKeySetup.vue'
 import { processImage } from './utils/ocr.js'
+import { hasApiKey } from './utils/apiKey.js'
 
 function emptyRecord(nro) {
   return {
@@ -113,7 +116,7 @@ function emptyRecord(nro) {
 
 export default {
   name: 'App',
-  components: { ImageUploader, DataPreview, ExcelExport, History },
+  components: { ImageUploader, DataPreview, ExcelExport, History, ApiKeySetup },
   data() {
     return {
       currentTab: 'upload',
@@ -129,7 +132,8 @@ export default {
       loadingMessage: '',
       progress: 0,
       canInstall: false,
-      deferredPrompt: null
+      deferredPrompt: null,
+      hasApiKey: hasApiKey()
     }
   },
   mounted() {
@@ -189,13 +193,23 @@ export default {
           ? `Reconociendo texto en "${fileName}"... ${Math.round(p.progress * 100)}%`
           : p.status === 'loading language traineddata'
           ? 'Cargando modelo de idioma...'
+          : p.status === 'enviando a Gemini'
+          ? 'Enviando a Gemini AI...'
+          : p.status === 'convirtiendo imagen'
+          ? 'Preparando imagen...'
+          : p.status === 'procesando respuesta'
+          ? 'Analizando documento con Gemini...'
+          : p.status === 'parseando datos'
+          ? 'Estructurando datos...'
           : `Procesando "${fileName}"...`
         this.progress = Math.round((p.progress || 0) * 100)
       })
 
       this.rawTexts.push({
         fileName: fileName || 'Imagen',
-        text: result.rawText
+        text: result.rawText,
+        engine: result.engine || 'tesseract',
+        note: result.geminiNote || ''
       })
 
       let newRecords = result.parsedData
@@ -207,6 +221,8 @@ export default {
 
       newRecords.forEach(r => {
         r.source = fileName || 'Imagen'
+        r.engine = result.engine || 'tesseract'
+        r.note = result.geminiNote || ''
       })
 
       this.records.push(...newRecords)
@@ -258,6 +274,11 @@ export default {
         this.canInstall = false
       }
       this.deferredPrompt = null
+    },
+
+    handleKeySaved() {
+      this.hasApiKey = true
+      this.loadingMessage = ''
     }
   }
 }

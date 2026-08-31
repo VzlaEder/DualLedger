@@ -46,6 +46,12 @@
           <div class="record-header-left">
             <span class="record-num">#{{ record.nro }}</span>
             <span v-if="record.source" class="record-source">{{ record.source }}</span>
+            <span v-if="record.engine" class="engine-tag" :class="record.engine">
+              {{ record.engine === 'gemini' ? '&#9889; AI' : '&#128269; Tesseract' }}
+            </span>
+            <span v-if="record.tipoDocumento && record.tipoDocumento !== 'otro'" class="doc-type-tag">
+              {{ docTypeLabel(record.tipoDocumento) }}
+            </span>
           </div>
           <div class="record-actions">
             <button class="icon-btn edit" @click="toggleEdit(index)" :title="editingIndex === index ? 'Guardar' : 'Editar'">
@@ -53,6 +59,9 @@
             </button>
             <button class="icon-btn delete" @click="handleDelete(index)" title="Eliminar">&#128465;</button>
           </div>
+        </div>
+        <div v-if="record.note" class="engine-warning">
+          &#9888; {{ record.note }}
         </div>
 
         <div class="record-body" v-if="editingIndex !== index">
@@ -234,6 +243,16 @@ export default {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
       }).format(val)
+    },
+
+    docTypeLabel(type) {
+      const labels = {
+        factura: 'Factura',
+        nota_credito: 'Nota Crédito',
+        nota_debito: 'Nota Débito',
+        reporte_z: 'Reporte Z'
+      }
+      return labels[type] || type
     }
   }
 }
@@ -295,6 +314,41 @@ export default {
   padding: 2px 8px;
   border-radius: 10px;
   font-weight: 600;
+}
+
+.engine-tag {
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.engine-tag.gemini {
+  background: rgba(46, 125, 50, 0.12);
+  color: var(--success);
+}
+
+.engine-tag.tesseract {
+  background: rgba(33, 33, 33, 0.08);
+  color: var(--text-secondary);
+}
+
+.doc-type-tag {
+  font-size: 0.68rem;
+  background: rgba(26, 35, 126, 0.08);
+  color: var(--primary);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.engine-warning {
+  background: rgba(255, 109, 0, 0.08);
+  color: var(--accent);
+  font-size: 0.75rem;
+  padding: 6px 14px;
+  border-left: 3px solid var(--accent);
+  margin: 0;
 }
 
 .toggle-btn {
