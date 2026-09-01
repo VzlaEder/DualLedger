@@ -1,4 +1,4 @@
-import { INVOICE_EXTRACTION_PROMPT } from './prompts'
+import { PRINT_EXTRACTION_PROMPT, INVOICE_EXTRACTION_PROMPT } from './prompts'
 import { getApiKey } from './apiKey'
 import { createEmptyRecord } from './parse'
 
@@ -8,11 +8,39 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 const MAX_RETRIES = 3
 const RETRY_DELAY_MS = 3000
 
-export async function recognizeWithGemini(imageFile, onProgress) {
+export async function testCredential(key) {
+  const credential = (key || getApiKey()).trim()
+  if (!credential) {
+    return { ok: false, message: 'No hay credencial' }
+  }
+  const body = { contents: [{ parts: [{ text: 'responde OK' }] }] }
+  try {
+    const res = await fetch(`${GEMINI_API_URL}?key=${encodeURIComponent(credential)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      body: JSON.stringify(body),
+      cache: 'no-store'
+    })
+    if (res.ok) {
+      return { ok: true, message: 'Credencial válida' }
+    }
+    const errBody = await res.text()
+    let motivo = `Error ${res.status}`
+    const info = JSON.parse(errBody)
+    if (info && info.error && info.error.message) motivo = info.error.message
+    return { ok: false, message: motivo, status: res.status }
+  } catch (e) {
+    return { ok: false, message: e.message || 'Error de red' }
+  }
+}
+
+export async function recognizeWithGemini(imageFile, onProgress, options = {}) {
   const credential = getApiKey()
   if (!credential) {
     throw new Error('No hay credencial de Gemini configurada')
   }
+
+  const prompt = options.handwritten ? INVOICE_EXTRACTION_PROMPT : PRINT_EXTRACTION_PROMPT
 
   if (onProgress) {
     onProgress({ status: 'convirtiendo imagen', progress: 0.1 })
@@ -28,7 +56,7 @@ export async function recognizeWithGemini(imageFile, onProgress) {
   const requestBody = {
     contents: [{
       parts: [
-        { text: INVOICE_EXTRACTION_PROMPT },
+        { text: prompt },
         {
           inline_data: {
             mime_type: mimeType,
@@ -44,7 +72,10 @@ export async function recognizeWithGemini(imageFile, onProgress) {
   }
 
   const apiUrl = `${GEMINI_API_URL}?key=${encodeURIComponent(credential)}`
-  const headers = { 'Content-Type': 'application/json' }
+  const headers = {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache, no-store, must-revalidate'
+  }
 
   let response
   let lastError = null
@@ -56,7 +87,8 @@ export async function recognizeWithGemini(imageFile, onProgress) {
     response = await fetch(apiUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      cache: 'no-store'
     })
 
     if (response.status === 503) {
@@ -72,22 +104,27 @@ export async function recognizeWithGemini(imageFile, onProgress) {
 
   if (!response.ok) {
     const errorBody = await response.text()
+    let serverMsg = ''
+    try {
+      const info = JSON.parse(errorBody)
+      if (info && info.error && info.error.message) serverMsg = ` (${info.error.message})`
+    } catch (e) { /* noop */ }
     if (response.status === 400) {
-      throw new Error('Credencial inválida o expirada. Genera una nueva en Google AI Studio.')
+      throw new Error('Gemini rechazó la solicitud (posible imagen muy grande o formato inválido)' + serverMsg)
     }
     if (response.status === 401) {
-      throw new Error('Credencial no autorizada o expirada. El token "AQ" caduca, genera uno nuevo en Google AI Studio.')
+      throw new Error('Credencial no autorizada o expirada. El token "AQ" caduca, genera uno nuevo en Google AI Studio.' + serverMsg)
     }
     if (response.status === 403) {
-      throw new Error('Sin permisos para esta credencial. Verifica tu cuenta/API en Google AI Studio.')
+      throw new Error('Sin permisos para esta credencial. Verifica tu cuenta/API en Google AI Studio.' + serverMsg)
     }
     if (response.status === 429) {
-      throw new Error('Límite de requests alcanzado. Intenta de nuevo en unos minutos.')
+      throw new Error('Límite de requests alcanzado. Intenta de nuevo en unos minutos.' + serverMsg)
     }
     if (response.status === 404) {
-      throw new Error(`Modelo no disponible: ${errorBody}`)
+      throw new Error(`Modelo no disponible: ${errorBody}` + serverMsg)
     }
-    throw new Error(`Error de la API de Gemini (${response.status}): ${errorBody}`)
+    throw new Error(`Error de la API de Gemini (${response.status})${serverMsg}`)
   }
 
   onProgress({ status: 'procesando respuesta', progress: 0.8 })
@@ -106,6 +143,7 @@ export async function recognizeWithGemini(imageFile, onProgress) {
   onProgress({ status: 'parseando datos', progress: 0.9 })
 
   const parsed = parseGeminiResponse(textResponse)
+  parsed.handwritten = !!options.handwritten
 
   const rawText = formatAsText(parsed)
 
@@ -141,6 +179,14 @@ function parseGeminiResponse(text) {
 
 function mapToRecord(json) {
   const record = createEmptyRecord()
+
+  const confidencias = {}
+  Object.keys(json).forEach(key => {
+    if (key.startsWith('confianza_')) {
+      confidencias[key.replace('confianza_', '')] = json[key]
+    }
+  })
+  record.confidencias = confidencias
 
   record.tipoDocumento = json.tipoDocumento || ''
   record.rif = json.rif || ''

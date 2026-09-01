@@ -162,7 +162,7 @@ export default {
         }
 
         try {
-          await this.handleImageLoaded(item.file, item.file.name)
+          await this.handleImageLoaded(item.file, item.file.name, item.handwritten)
           if (this.$refs.uploaderRef) {
             const queueIndex = this.$refs.uploaderRef.queue.indexOf(item)
             this.$refs.uploaderRef.updateItemStatus(queueIndex, 'done')
@@ -185,7 +185,7 @@ export default {
       this.currentTab = 'preview'
     },
 
-    async handleImageLoaded(file, fileName) {
+    async handleImageLoaded(file, fileName, handwritten = false) {
       this.progress = 0
 
       const result = await processImage(file, (p) => {
@@ -203,13 +203,14 @@ export default {
           ? 'Estructurando datos...'
           : `Procesando "${fileName}"...`
         this.progress = Math.round((p.progress || 0) * 100)
-      })
+      }, { handwritten })
 
       this.rawTexts.push({
         fileName: fileName || 'Imagen',
         text: result.rawText,
         engine: result.engine || 'tesseract',
-        note: result.geminiNote || ''
+        note: result.geminiNote || '',
+        handwritten
       })
 
       let newRecords = result.parsedData
@@ -223,6 +224,8 @@ export default {
         r.source = fileName || 'Imagen'
         r.engine = result.engine || 'tesseract'
         r.note = result.geminiNote || ''
+        if (handwritten) r.handwritten = true
+        if (r.confidencias && Object.keys(r.confidencias).length > 0) r.handwritten = true
       })
 
       this.records.push(...newRecords)

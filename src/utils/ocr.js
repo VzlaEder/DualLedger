@@ -4,10 +4,10 @@ import { parseReportData } from './parse'
 import { recognizeWithGemini } from './gemini'
 import { hasApiKey } from './apiKey'
 
-export async function processImage(imageFile, onProgress) {
+export async function processImage(imageFile, onProgress, options = {}) {
   if (hasApiKey()) {
     try {
-      return await processWithGemini(imageFile, onProgress)
+      return await processWithGemini(imageFile, onProgress, options)
     } catch (geminiErr) {
       console.warn('[OCR] Gemini falló, usando Tesseract como fallback:', geminiErr)
       const note = geminiErr && geminiErr.message ? geminiErr.message : 'Gemini no disponible'
@@ -17,8 +17,8 @@ export async function processImage(imageFile, onProgress) {
   return processWithTesseract(imageFile, onProgress, 'No hay credencial de Gemini configurada')
 }
 
-async function processWithGemini(imageFile, onProgress) {
-  return recognizeWithGemini(imageFile, onProgress)
+async function processWithGemini(imageFile, onProgress, options) {
+  return recognizeWithGemini(imageFile, onProgress, options)
 }
 
 async function processWithTesseract(imageFile, onProgress, geminiNote) {

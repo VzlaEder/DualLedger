@@ -37,9 +37,19 @@
             <img :src="item.previewUrl" class="queue-thumb" />
             <div class="queue-info">
               <p class="queue-name">{{ item.file.name }}</p>
-              <span class="queue-status" :class="item.status">
-                {{ statusLabel(item.status) }}
-              </span>
+              <div class="queue-meta">
+                <span class="queue-status" :class="item.status">
+                  {{ statusLabel(item.status) }}
+                </span>
+                <span
+                  class="handwritten-toggle"
+                  :class="{ active: item.handwritten }"
+                  @click.stop="toggleHandwritten(item)"
+                  :title="item.handwritten ? 'Marcada como manuscrita - click para quitar' : 'Marcar como factura manuscrita'"
+                >
+                  <span>&#9997; Manuscrita</span>
+                </span>
+              </div>
             </div>
             <button class="remove-queue-btn" @click.stop="removeFromQueue(index)">&#10005;</button>
           </div>
@@ -130,8 +140,13 @@ export default {
       this.queue.push({
         file,
         previewUrl: URL.createObjectURL(file),
-        status: 'pending'
+        status: 'pending',
+        handwritten: false
       })
+    },
+
+    toggleHandwritten(item) {
+      item.handwritten = !item.handwritten
     },
 
     removeFromQueue(index) {
@@ -278,6 +293,41 @@ export default {
 .queue-status.processing { color: var(--accent); }
 .queue-status.done { color: var(--success); }
 .queue-status.error { color: var(--error); }
+
+.queue-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.handwritten-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 3px 10px;
+  border-radius: 10px;
+  user-select: none;
+  transition: all 0.2s;
+}
+
+.handwritten-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.handwritten-toggle.active {
+  background: rgba(255, 109, 0, 0.15);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(255, 109, 0, 0.2);
+}
 
 .remove-queue-btn {
   width: 28px;

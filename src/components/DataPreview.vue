@@ -63,33 +63,36 @@
         <div v-if="record.note" class="engine-warning">
           &#9888; {{ record.note }}
         </div>
+        <div v-if="record.handwritten" class="handwritten-banner">
+          &#9997; Factura manuscrita: revisa los campos marcados en naranja
+        </div>
 
         <div class="record-body" v-if="editingIndex !== index">
-          <div class="field-row">
+          <div class="field-row" :class="{ doubtful: isDoubtful(record, 'fecha') }">
             <span class="field-label">Fecha:</span>
             <span class="field-value">{{ record.fecha || '-' }}</span>
           </div>
-          <div class="field-row">
+          <div class="field-row" :class="{ doubtful: isDoubtful(record, 'rif') }">
             <span class="field-label">RIF:</span>
             <span class="field-value">{{ record.rif || '-' }}</span>
           </div>
-          <div class="field-row">
+          <div class="field-row" :class="{ doubtful: isDoubtful(record, 'nombreRazon') }">
             <span class="field-label">Nombre/Razón Social:</span>
             <span class="field-value">{{ record.nombreRazon || '-' }}</span>
           </div>
-          <div class="field-row">
+          <div class="field-row" :class="{ doubtful: isDoubtful(record, 'nroFactura') }">
             <span class="field-label">Nro. Factura:</span>
             <span class="field-value">{{ record.nroFactura || '-' }}</span>
           </div>
-          <div class="field-row">
+          <div class="field-row" :class="{ doubtful: isDoubtful(record, 'nroControl') }">
             <span class="field-label">Nro. Control:</span>
             <span class="field-value">{{ record.nroControl || '-' }}</span>
           </div>
-          <div class="field-row highlight">
+          <div class="field-row highlight" :class="{ doubtful: isDoubtful(record, 'totalComprasIVA') }">
             <span class="field-label">Total Compras (IVA incl.):</span>
             <span class="field-value amount">{{ formatAmount(record.totalComprasIVA) }}</span>
           </div>
-          <div class="field-row">
+          <div class="field-row" :class="{ doubtful: isDoubtful(record, 'baseNacional') }">
             <span class="field-label">Base Imponible:</span>
             <span class="field-value">{{ formatAmount(record.baseNacional) }}</span>
           </div>
@@ -253,6 +256,12 @@ export default {
         reporte_z: 'Reporte Z'
       }
       return labels[type] || type
+    },
+
+    isDoubtful(record, campo) {
+      if (!record.handwritten) return false
+      const c = record.confidencias && record.confidencias[campo]
+      return c === 'media' || c === 'baja'
     }
   }
 }
@@ -349,6 +358,28 @@ export default {
   padding: 6px 14px;
   border-left: 3px solid var(--accent);
   margin: 0;
+}
+
+.handwritten-banner {
+  background: rgba(255, 109, 0, 0.1);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(255, 109, 0, 0.2);
+  margin: 0;
+}
+
+.field-row.doubtful {
+  background: rgba(255, 109, 0, 0.08);
+  border-bottom: 1px solid rgba(255, 109, 0, 0.3);
+  border-radius: 4px;
+  padding: 6px 6px;
+}
+
+.field-row.doubtful .field-value {
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .toggle-btn {
