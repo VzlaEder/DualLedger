@@ -157,7 +157,7 @@ export default {
 }
 
 .card-dates { font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px; }
-.card-date { font-size: 0.72rem; color: var(--text-secondary); margin-top: 6px; opacity: 0.7; }
+.card-date { font-size: 0.72rem; color: var(--text-secondary); margin-top: 6px; opacity: 0.9; }
 
 .icon-btn {
   width: 32px;
@@ -172,8 +172,8 @@ export default {
   flex-shrink: 0;
 }
 
-.icon-btn.delete { background: rgba(176, 0, 32, 0.08); color: var(--error); }
-.icon-btn.delete:hover { background: rgba(176, 0, 32, 0.15); }
+.icon-btn.delete { background: rgba(var(--error-rgb), 0.08); color: var(--error); }
+.icon-btn.delete:hover { background: rgba(var(--error-rgb), 0.15); }
 
 .btn {
   width: 100%;
@@ -187,10 +187,10 @@ export default {
 }
 
 .btn-clear {
-  background: rgba(176, 0, 32, 0.08);
+  background: rgba(var(--error-rgb), 0.08);
   color: var(--error);
-  border: 1px solid rgba(176, 0, 32, 0.2);
+  border: 1px solid rgba(var(--error-rgb), 0.2);
 }
 
-.btn-clear:hover { background: rgba(176, 0, 32, 0.12); }
+.btn-clear:hover { background: rgba(var(--error-rgb), 0.12); }
 </style>

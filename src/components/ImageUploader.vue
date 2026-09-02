@@ -219,7 +219,7 @@ export default {
 
 .drop-zone.dragover {
   border-color: var(--primary);
-  background: rgba(26, 35, 126, 0.04);
+  background: rgba(var(--primary-rgb), 0.04);
 }
 
 .upload-placeholder { text-align: center; padding: 24px; }
@@ -323,10 +323,10 @@ export default {
 }
 
 .handwritten-toggle.active {
-  background: rgba(255, 109, 0, 0.15);
+  background: rgba(var(--accent-rgb), 0.15);
   color: var(--accent);
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(255, 109, 0, 0.2);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.2);
 }
 
 .remove-queue-btn {
@@ -334,7 +334,7 @@ export default {
   height: 28px;
   border: none;
   border-radius: 50%;
-  background: rgba(176, 0, 32, 0.08);
+  background: rgba(var(--error-rgb), 0.08);
   color: var(--error);
   font-size: 0.8rem;
   cursor: pointer;
@@ -389,7 +389,7 @@ export default {
 .type-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .chip {
-  background: rgba(26, 35, 126, 0.08);
+  background: rgba(var(--primary-rgb), 0.08);
   color: var(--primary);
   padding: 6px 12px;
   border-radius: 20px;

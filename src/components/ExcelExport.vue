@@ -201,13 +201,13 @@ export default {
 
 .date-field { flex: 1; }
 .date-field label { display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; }
-.date-field input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; }
+.date-field input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; background: var(--background); color: var(--text); }
 
 .summary-table { margin-bottom: 20px; }
 .summary-table h3 { font-size: 0.9rem; margin-bottom: 8px; color: var(--text); }
 
 .summary-rows {
-  background: rgba(26, 35, 126, 0.03);
+  background: rgba(var(--primary-rgb), 0.03);
   border-radius: 8px;
   padding: 12px;
 }
@@ -217,7 +217,7 @@ export default {
   justify-content: space-between;
   padding: 5px 0;
   font-size: 0.85rem;
-  border-bottom: 1px solid rgba(0,0,0,0.05);
+  border-bottom: 1px solid var(--divider-weak);
 }
 
 .summary-row:last-child { border-bottom: none; }
@@ -275,6 +275,6 @@ td {
   white-space: nowrap;
 }
 
-tr:nth-child(even) { background: rgba(0,0,0,0.02); }
+tr:nth-child(even) { background: var(--divider-weak); }
 .table-note { font-size: 0.75rem; color: var(--text-secondary); margin-top: 8px; text-align: center; }
 </style>

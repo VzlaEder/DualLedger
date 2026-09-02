@@ -210,14 +210,15 @@ export default {
 }
 
 .engine-badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(46, 125, 50, 0.08);
-  border: 1px solid rgba(46, 125, 50, 0.2);
-  padding: 8px 14px;
+  background: var(--badge-strong);
+  border: 2px solid var(--success);
+  padding: 5px 14px;
   border-radius: 20px;
   font-size: 0.78rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .engine-dot {
@@ -248,7 +249,7 @@ export default {
 }
 
 .test-result.ok {
-  border-color: rgba(46, 125, 50, 0.4);
+  border-color: rgba(var(--success-rgb), 0.4);
   color: var(--success);
 }
 
@@ -264,7 +265,7 @@ export default {
 
 .engine-label {
   color: var(--success);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .settings-btn {
@@ -272,7 +273,8 @@ export default {
   border: none;
   cursor: pointer;
   font-size: 1rem;
-  opacity: 0.6;
+  color: var(--badge-text);
+  opacity: 0.8;
   transition: opacity 0.2s;
 }
 
