@@ -393,4 +393,4 @@ Para problemas o preguntas:
 
 ---
 
-**Hecho con ❤️ para las empresas venezolanas**
+**Hecho con ❤️ para las empresas venezolanas.**
