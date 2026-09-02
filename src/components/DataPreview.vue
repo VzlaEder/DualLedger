@@ -2,7 +2,12 @@
   <div class="preview">
     <div class="section-header">
       <h2>&#128203; Datos Extraídos</h2>
-      <span class="record-count">{{ records.length }} registro(s)</span>
+      <div class="header-actions">
+        <span class="record-count">{{ records.length }} registro(s)</span>
+        <button v-if="records.length > 0" class="btn-clear" @click="$emit('clear-records')">
+          &#128465; Limpiar
+        </button>
+      </div>
     </div>
 
     <div class="raw-text-toggle" v-if="rawTexts.length > 0">
@@ -204,7 +209,7 @@ export default {
     records: { type: Array, default: () => [] },
     rawTexts: { type: Array, default: () => [] }
   },
-  emits: ['update-record', 'delete-record', 'add-record', 'go-upload'],
+  emits: ['update-record', 'delete-record', 'add-record', 'go-upload', 'clear-records'],
   data() {
     return {
       editingIndex: -1,
@@ -278,6 +283,13 @@ export default {
 }
 
 .section-header h2 { font-size: 1.1rem; color: var(--text); }
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .record-count {
   background: var(--primary);
   color: white;
@@ -287,11 +299,26 @@ export default {
   font-weight: 600;
 }
 
+.btn-clear {
+  background: rgba(var(--error-rgb), 0.08);
+  color: var(--error);
+  border: 1px solid rgba(var(--error-rgb), 0.2);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-clear:hover { background: rgba(var(--error-rgb), 0.12); }
+
 .source-summary { margin-bottom: 12px; }
 .source-label { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 6px; }
 .source-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .source-chip {
-  background: rgba(26, 35, 126, 0.08);
+  background: rgba(var(--primary-rgb), 0.08);
   color: var(--primary);
   padding: 4px 10px;
   border-radius: 16px;
@@ -304,7 +331,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 10px 14px;
-  background: rgba(26, 35, 126, 0.04);
+  background: rgba(var(--primary-rgb), 0.04);
   border-bottom: 1px solid var(--border);
 }
 
@@ -318,7 +345,7 @@ export default {
 
 .record-source {
   font-size: 0.68rem;
-  background: rgba(255, 109, 0, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   color: var(--accent);
   padding: 2px 8px;
   border-radius: 10px;
@@ -333,18 +360,18 @@ export default {
 }
 
 .engine-tag.gemini {
-  background: rgba(46, 125, 50, 0.12);
+  background: rgba(var(--success-rgb), 0.12);
   color: var(--success);
 }
 
 .engine-tag.tesseract {
-  background: rgba(33, 33, 33, 0.08);
+  background: var(--tesseract-bg);
   color: var(--text-secondary);
 }
 
 .doc-type-tag {
   font-size: 0.68rem;
-  background: rgba(26, 35, 126, 0.08);
+  background: rgba(var(--primary-rgb), 0.08);
   color: var(--primary);
   padding: 2px 8px;
   border-radius: 10px;
@@ -352,7 +379,7 @@ export default {
 }
 
 .engine-warning {
-  background: rgba(255, 109, 0, 0.08);
+  background: rgba(var(--accent-rgb), 0.08);
   color: var(--accent);
   font-size: 0.75rem;
   padding: 6px 14px;
@@ -361,18 +388,18 @@ export default {
 }
 
 .handwritten-banner {
-  background: rgba(255, 109, 0, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   color: var(--accent);
   font-size: 0.78rem;
   font-weight: 600;
   padding: 8px 14px;
-  border-bottom: 1px solid rgba(255, 109, 0, 0.2);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.2);
   margin: 0;
 }
 
 .field-row.doubtful {
-  background: rgba(255, 109, 0, 0.08);
-  border-bottom: 1px solid rgba(255, 109, 0, 0.3);
+  background: rgba(var(--accent-rgb), 0.08);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.3);
   border-radius: 4px;
   padding: 6px 6px;
 }
@@ -442,7 +469,7 @@ export default {
   color: var(--primary);
 }
 
-.btn-outline:hover { background: rgba(26, 35, 126, 0.05); }
+.btn-outline:hover { background: rgba(var(--primary-rgb), 0.05); }
 
 .records-list { display: flex; flex-direction: column; gap: 10px; }
 
@@ -468,10 +495,10 @@ export default {
   transition: all 0.2s;
 }
 
-.icon-btn.edit { background: rgba(26, 35, 126, 0.08); color: var(--primary); }
-.icon-btn.edit:hover { background: rgba(26, 35, 126, 0.15); }
-.icon-btn.delete { background: rgba(176, 0, 32, 0.08); color: var(--error); }
-.icon-btn.delete:hover { background: rgba(176, 0, 32, 0.15); }
+.icon-btn.edit { background: rgba(var(--primary-rgb), 0.08); color: var(--primary); }
+.icon-btn.edit:hover { background: rgba(var(--primary-rgb), 0.15); }
+.icon-btn.delete { background: rgba(var(--error-rgb), 0.08); color: var(--error); }
+.icon-btn.delete:hover { background: rgba(var(--error-rgb), 0.15); }
 
 .record-body { padding: 12px 14px; }
 
@@ -479,7 +506,7 @@ export default {
   display: flex;
   justify-content: space-between;
   padding: 5px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  border-bottom: 1px solid var(--divider-weak);
   font-size: 0.82rem;
 }
 
@@ -487,7 +514,7 @@ export default {
 .field-value { color: var(--text); font-weight: 400; text-align: right; max-width: 60%; }
 .field-value.amount { color: var(--primary); font-weight: 700; font-size: 0.9rem; }
 
-.field-row.highlight { background: rgba(26, 35, 126, 0.03); border-radius: 4px; padding: 8px 4px; }
+.field-row.highlight { background: rgba(var(--primary-rgb), 0.03); border-radius: 4px; padding: 8px 4px; }
 
 .record-edit { padding: 14px; }
 
@@ -540,7 +567,7 @@ export default {
   transition: all 0.2s;
 }
 
-.btn-add:hover { border-color: var(--primary); background: rgba(26, 35, 126, 0.02); }
+.btn-add:hover { border-color: var(--primary); background: rgba(var(--primary-rgb), 0.02); }
 
 @media (max-width: 480px) {
   .edit-grid { grid-template-columns: 1fr; }
