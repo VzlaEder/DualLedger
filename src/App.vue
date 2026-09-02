@@ -3,20 +3,44 @@
     <header class="app-header">
       <div class="header-top">
         <div class="header-content">
-          <h1 class="app-title">
-            <span class="icon">&#128247;</span>
-            Image Info
-          </h1>
-          <p class="app-subtitle">Libro de Compras - Extractor de Datos</p>
+          <div class="brand-row">
+            <img :src="brandLogo" class="brand-logo" alt="DualLedger" />
+            <div class="brand-text">
+              <h1 class="app-title">DualLedger</h1>
+              <p class="app-subtitle">Libro de Compras - Extractor de Datos</p>
+            </div>
+          </div>
         </div>
-        <button
-          v-if="canInstall"
-          class="install-btn"
-          @click="installApp"
-          title="Instalar app en escritorio"
-        >
-          &#128228; Instalar App
-        </button>
+        <div class="header-actions">
+          <button
+            class="theme-toggle"
+            @click="toggleTheme"
+            :title="theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
+          >
+            <svg v-if="theme === 'dark'" class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <svg v-else class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+          </button>
+          <button
+            v-if="canInstall"
+            class="install-btn"
+            @click="installApp"
+            title="Instalar app en escritorio"
+          >
+            &#128228; Instalar App
+          </button>
+        </div>
       </div>
       <div class="records-badge" v-if="records.length > 0">
         {{ records.length }} registro(s) acumulados
@@ -51,6 +75,7 @@
         @delete-record="handleDeleteRecord"
         @add-record="handleAddRecord"
         @go-upload="currentTab = 'upload'"
+        @clear-records="handleClearRecords"
       />
 
       <ExcelExport
@@ -81,6 +106,7 @@ import DataPreview from './components/DataPreview.vue'
 import ExcelExport from './components/ExcelExport.vue'
 import History from './components/History.vue'
 import ApiKeySetup from './components/ApiKeySetup.vue'
+import brandLogo from './assets/logo/DualLedger.svg'
 import { processImage } from './utils/ocr.js'
 import { hasApiKey } from './utils/apiKey.js'
 
@@ -119,6 +145,7 @@ export default {
   components: { ImageUploader, DataPreview, ExcelExport, History, ApiKeySetup },
   data() {
     return {
+      brandLogo,
       currentTab: 'upload',
       tabs: [
         { id: 'upload', label: 'Subir', icon: '&#128228;' },
@@ -133,10 +160,12 @@ export default {
       progress: 0,
       canInstall: false,
       deferredPrompt: null,
-      hasApiKey: hasApiKey()
+      hasApiKey: hasApiKey(),
+      theme: 'light'
     }
   },
   mounted() {
+    this.applyInitialTheme()
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault()
       this.deferredPrompt = e
@@ -242,6 +271,13 @@ export default {
       this.renumberRecords()
     },
 
+    handleClearRecords() {
+      if (confirm('¿Limpiar todos los registros de la sesión actual?')) {
+        this.records = []
+        this.rawTexts = []
+      }
+    },
+
     handleAddRecord() {
       this.records.push(emptyRecord(this.records.length + 1))
     },
@@ -282,6 +318,28 @@ export default {
     handleKeySaved() {
       this.hasApiKey = true
       this.loadingMessage = ''
+    },
+
+    applyInitialTheme() {
+      const stored = localStorage.getItem('dualledger-theme')
+      let theme = 'light'
+      if (stored === 'dark' || stored === 'light') {
+        theme = stored
+      } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        theme = 'dark'
+      }
+      this.theme = theme
+      document.documentElement.setAttribute('data-theme', theme)
+    },
+
+    setTheme(theme) {
+      this.theme = theme
+      document.documentElement.setAttribute('data-theme', theme)
+      localStorage.setItem('dualledger-theme', theme)
+    },
+
+    toggleTheme() {
+      this.setTheme(this.theme === 'dark' ? 'light' : 'dark')
     }
   }
 }
@@ -289,27 +347,77 @@ export default {
 
 <style>
 :root {
-  --primary: #1a237e;
-  --primary-light: #534bae;
-  --primary-dark: #000051;
-  --accent: #ff6d00;
+  --primary: #1a56db;
+  --primary-light: #3b82f6;
+  --primary-dark: #0f3d9e;
+  --accent: #f59e0b;
   --surface: #ffffff;
-  --background: #f5f5f5;
-  --error: #b00020;
-  --success: #2e7d32;
-  --text: #212121;
-  --text-secondary: #757575;
-  --border: #e0e0e0;
-  --shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --background: #f3f5f9;
+  --error: #dc2626;
+  --success: #16a34a;
+  --text: #111827;
+  --text-secondary: #6b7280;
+  --border: #e5e7eb;
+  --shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.12);
   --radius: 12px;
+  --primary-rgb: 26, 86, 219;
+  --accent-rgb: 245, 158, 11;
+  --error-rgb: 220, 38, 38;
+  --success-rgb: 22, 163, 74;
+  --divider-weak: rgba(0, 0, 0, 0.04);
+  --tesseract-bg: rgba(33, 33, 33, 0.08);
+  --badge-strong: #ffffff;
+  --badge-text: #4b5563;
+}
+
+[data-theme="dark"] {
+  --primary: #3b82f6;
+  --primary-light: #60a5fa;
+  --primary-dark: #2563eb;
+  --accent: #fbbf24;
+  --surface: #1f2937;
+  --background: #111827;
+  --error: #f87171;
+  --success: #4ade80;
+  --text: #f3f4f6;
+  --text-secondary: #a9b2bd;
+  --border: #374151;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --primary-rgb: 59, 130, 246;
+  --accent-rgb: 251, 191, 36;
+  --error-rgb: 248, 113, 113;
+  --success-rgb: 74, 222, 128;
+  --divider-weak: rgba(255, 255, 255, 0.06);
+  --tesseract-bg: rgba(255, 255, 255, 0.08);
+  --badge-strong: #1f2937;
+  --badge-text: #ffffff;
+}
+
+[data-theme="dark"] .app-header {
+  background: linear-gradient(135deg, #1e40af, #2563eb);
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
+
+html, body {
+  color: var(--text);
+  background: var(--background);
+}
 
 .app-container {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  color: var(--text);
+  background: var(--background);
 }
 
 .app-header {
@@ -319,22 +427,41 @@ export default {
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.18);
 }
 
 .header-top {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 6px;
 }
 
 .header-content { text-align: center; flex: 1; }
 
+.brand-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.brand-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.brand-text { text-align: left; }
+
 .app-title {
   font-size: 1.4rem;
   font-weight: 700;
   letter-spacing: 0.5px;
+  line-height: 1;
 }
 
 .icon { font-size: 1.2rem; }
@@ -342,7 +469,7 @@ export default {
 .app-subtitle {
   font-size: 0.75rem;
   opacity: 0.85;
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .install-btn {
@@ -357,6 +484,39 @@ export default {
   white-space: nowrap;
   animation: pulse 2s infinite;
   flex-shrink: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.theme-toggle {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: white;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.theme-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
 }
 
 @keyframes pulse {
@@ -398,7 +558,7 @@ export default {
 .nav-tab.active {
   color: white;
   border-bottom-color: var(--accent);
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .nav-tab:hover { background: rgba(255, 255, 255, 0.08); }
@@ -472,7 +632,8 @@ export default {
 
 @media (max-width: 480px) {
   .nav-tab { font-size: 0.72rem; padding: 8px 6px; }
-  .app-title { font-size: 1.25rem; }
+  .app-title { font-size: 1.2rem; }
+  .brand-logo { width: 38px; height: 38px; font-size: 1.2rem; }
   .install-btn { font-size: 0.68rem; padding: 6px 8px; }
 }
 </style>
