@@ -155,6 +155,57 @@ export async function recognizeWithGemini(imageFile, onProgress, options = {}) {
   }
 }
 
+export async function transcribeCaptchaWithGemini(base64Image, { signal } = {}) {
+  const credential = getApiKey()
+  if (!credential) {
+    throw new Error('No hay credencial de Gemini configurada')
+  }
+
+  const requestBody = {
+    contents: [{
+      parts: [
+        { text: 'Esto es una imagen CAPTCHA. Transcribe EXACTAMENTE los caracteres visibles (letras y/o números), sin espacios, sin signos, sin texto adicional. Responde SOLO con los caracteres, máximo 10.' },
+        {
+          inline_data: {
+            mime_type: 'image/jpeg',
+            data: base64Image
+          }
+        }
+      ]
+    }],
+    generationConfig: {
+      temperature: 0,
+      max_output_tokens: 20
+    }
+  }
+
+  const apiUrl = `${GEMINI_API_URL}?key=${encodeURIComponent(credential)}`
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+    body: JSON.stringify(requestBody),
+    cache: 'no-store',
+    signal
+  })
+
+  if (!res.ok) {
+    const errorBody = await res.text()
+    let serverMsg = ''
+    try {
+      const info = JSON.parse(errorBody)
+      if (info && info.error && info.error.message) serverMsg = ` (${info.error.message})`
+    } catch (e) { /* noop */ }
+    throw new Error(`Error de Gemini al transcribir el captcha (${res.status})${serverMsg}`)
+  }
+
+  const data = await res.json()
+  if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+    throw new Error('Respuesta vacía de Gemini para el captcha')
+  }
+
+  return data.candidates[0].content.parts.map(p => p.text).join('').trim()
+}
+
 function parseGeminiResponse(text) {
   let cleaned = text.trim()
 

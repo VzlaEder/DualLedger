@@ -59,11 +59,35 @@
             </span>
           </div>
           <div class="record-actions">
+            <button
+              v-if="seniatBusy[index]"
+              class="seniat-cancel"
+              @click.stop="cancelarSENIAT(index)"
+              title="Cancelar la verificación en curso"
+            >
+              &#10005; Cancelar
+            </button>
+            <button
+              v-else-if="normalizedRif(record.rif)"
+              class="seniat-btn"
+              :class="{ revalidated: hasSeniatData(record) }"
+              @click.stop="verificarSENIAT(index)"
+              :title="hasSeniatData(record) ? 'Volver a consultar este RIF en el SENIAT' : 'Consultar nombre real y % contribución en el SENIAT'"
+            >
+              <span v-if="hasSeniatData(record)">&#128260; Re-verificar</span>
+              <span v-else>&#127963; Verificar SENIAT</span>
+            </button>
             <button class="icon-btn edit" @click="toggleEdit(index)" :title="editingIndex === index ? 'Guardar' : 'Editar'">
               {{ editingIndex === index ? '&#10003;' : '&#9998;' }}
             </button>
             <button class="icon-btn delete" @click="handleDelete(index)" title="Eliminar">&#128465;</button>
           </div>
+        </div>
+        <div v-if="seniatBusy[index]" class="seniat-loading">
+          &#128190; Verificando en el SENIAT...
+        </div>
+        <div v-if="seniatError[index]" class="seniat-error">
+          &#9888; {{ seniatError[index] }}
         </div>
         <div v-if="record.note" class="engine-warning">
           &#9888; {{ record.note }}
@@ -84,6 +108,10 @@
           <div class="field-row" :class="{ doubtful: isDoubtful(record, 'nombreRazon') }">
             <span class="field-label">Nombre/Razón Social:</span>
             <span class="field-value">{{ record.nombreRazon || '-' }}</span>
+          </div>
+          <div class="field-row" :class="{ doubtful: isDoubtful(record, 'porcentajeContribucion') }">
+            <span class="field-label">% Contribución:</span>
+            <span class="field-value">{{ hasPorcentaje(record) ? record.porcentajeContribucion + '%' : '-' }}</span>
           </div>
           <div class="field-row" :class="{ doubtful: isDoubtful(record, 'nroFactura') }">
             <span class="field-label">Nro. Factura:</span>
@@ -120,6 +148,10 @@
             <div class="edit-field full">
               <label>Nombre / Razón Social</label>
               <input v-model="editForm.nombreRazon" type="text" />
+            </div>
+            <div class="edit-field">
+              <label>% Contribución</label>
+              <input v-model="editForm.porcentajeContribucion" type="number" step="1" min="0" max="100" />
             </div>
             <div class="edit-field">
               <label>Nro. Factura</label>
@@ -203,6 +235,8 @@
 </template>
 
 <script>
+import { verificarRifEnSeniat } from '../utils/seniat.js'
+
 export default {
   name: 'DataPreview',
   props: {
@@ -214,7 +248,10 @@ export default {
     return {
       editingIndex: -1,
       editForm: {},
-      showRawText: false
+      showRawText: false,
+      seniatBusy: {},
+      seniatError: {},
+      seniatControllers: {}
     }
   },
   computed: {
@@ -228,6 +265,62 @@ export default {
     }
   },
   methods: {
+    normalizeRif(rif) {
+      return String(rif || '').replace(/\s+/g, '').toUpperCase()
+    },
+
+    hasSeniatData(record) {
+      return !!(record.nombreRazon || this.hasPorcentaje(record))
+    },
+
+    hasPorcentaje(record) {
+      return record.porcentajeContribucion !== undefined &&
+        record.porcentajeContribucion !== null &&
+        record.porcentajeContribucion !== ''
+    },
+
+    async verificarSENIAT(index) {
+      const record = this.records[index]
+      const rif = this.normalizeRif(record.rif)
+      if (!rif) return
+
+      const controller = new AbortController()
+      this.seniatControllers = { ...this.seniatControllers, [index]: controller }
+      this.seniatBusy = { ...this.seniatBusy, [index]: true }
+      this.seniatError = { ...this.seniatError, [index]: '' }
+      try {
+        const res = await verificarRifEnSeniat(rif, { signal: controller.signal })
+        const updated = {
+          ...record,
+          nombreRazon: res.nombreRazon || record.nombreRazon,
+          porcentajeContribucion: res.porcentajeContribucion
+        }
+        this.$emit('update-record', index, updated)
+      } catch (e) {
+        if (e && (e.name === 'AbortError' || (e && e.message && e.message === 'Verificación cancelada'))) {
+          this.seniatError = {
+            ...this.seniatError,
+            [index]: 'Verificación cancelada'
+          }
+        } else {
+          this.seniatError = {
+            ...this.seniatError,
+            [index]: (e && e.message) || 'No se pudo verificar el RIF'
+          }
+        }
+      } finally {
+        this.seniatBusy = { ...this.seniatBusy, [index]: false }
+        const c = this.seniatControllers[index]
+        if (c && !c.signal.aborted) c.abort()
+        this.seniatControllers = { ...this.seniatControllers, [index]: null }
+      }
+    },
+
+    cancelarSENIAT(index) {
+      const c = this.seniatControllers[index]
+      if (c) c.abort()
+    },
+
     toggleEdit(index) {
       if (this.editingIndex === index) {
         this.$emit('update-record', index, { ...this.editForm })
@@ -480,7 +573,62 @@ export default {
   overflow: hidden;
 }
 
-.record-actions { display: flex; gap: 4px; }
+.record-actions { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+
+.seniat-btn {
+  background: var(--surface);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.seniat-btn:hover:not(:disabled) { background: rgba(var(--primary-rgb), 0.08); }
+
+.seniat-btn.revalidated {
+  background: rgba(var(--success-rgb), 0.1);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.seniat-cancel {
+  background: rgba(var(--error-rgb), 0.08);
+  border: 1px solid var(--error);
+  color: var(--error);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.seniat-cancel:hover { background: rgba(var(--error-rgb), 0.15); }
+
+.seniat-loading {
+  background: rgba(var(--primary-rgb), 0.06);
+  color: var(--primary);
+  font-size: 0.75rem;
+  padding: 6px 14px;
+  border-left: 3px solid var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.seniat-error {
+  background: rgba(var(--error-rgb), 0.08);
+  color: var(--error);
+  font-size: 0.75rem;
+  padding: 6px 14px;
+  border-left: 3px solid var(--error);
+}
 
 .icon-btn {
   width: 32px;

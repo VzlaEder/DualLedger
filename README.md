@@ -79,6 +79,37 @@ La aplicación estará disponible en `http://localhost:3000`
    - La aplicación funcionará con Tesseract.js local
    - La precisión será menor, especialmente con documentos manuscritos
 
+### Verificación de RIF en el SENIAT (opcional)
+
+Para rellenar automáticamente el nombre real (razón social) y el % de contribución de cada
+RIF, la app usa un **Cloudflare Worker** que consulta el portal público del SENIAT.
+
+**Despliegue inicial (una sola vez, por terminal):**
+
+```bash
+cd worker
+npx wrangler kv namespace create RIF_CACHE
+# Copia el "id" que imprime y pégalo en worker/wrangler.toml (campo id del bloque [[kv_namespaces]])
+npx wrangler login
+npx wrangler deploy
+```
+
+Cuando termine, copia la URL `https://...workers.dev` que imprime wrangler.
+
+**Configurar en la app:**
+
+1. Haz clic en el botón ⚙ (Herramientas) del encabezado.
+2. Pega la **Account ID** de Cloudflare (opcional, se autodetectaría).
+3. Pega el **API Token** de Cloudflare con permisos `Workers Scripts: Edit` y `Workers KV Storage: Edit`.
+4. Pega la **URL del Worker** `https://...workers.dev`.
+5. Clic en "Actualizar / desplegar Worker SENIAT".
+
+A partir de ahí, el botón ⚙ puede re-desplegar el Worker automáticamente (la PWA envía
+el código al Worker y este se actualiza a sí mismo vía la API de Cloudflare).
+
+Nota: La API de Cloudflare **no permite** llamadas directas desde el navegador (CORS),
+por eso el despliegue inicial se hace por terminal una única vez.
+
 ### Flujo de Trabajo
 
 1. **Subir Imágenes:**

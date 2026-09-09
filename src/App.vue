@@ -13,6 +13,13 @@
         </div>
         <div class="header-actions">
           <button
+            class="tools-toggle"
+            @click="openSeniatSetup"
+            title="Herramientas: configurar servicio SENIAT"
+          >
+            &#9881;
+          </button>
+          <button
             class="theme-toggle"
             @click="toggleTheme"
             :title="theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
@@ -90,6 +97,8 @@
       />
     </main>
 
+    <SeniatSetup ref="seniatSetupRef" />
+
     <div v-if="loading" class="loading-overlay">
       <div class="loading-spinner"></div>
       <p class="loading-text">{{ loadingMessage }}</p>
@@ -106,6 +115,7 @@ import DataPreview from './components/DataPreview.vue'
 import ExcelExport from './components/ExcelExport.vue'
 import History from './components/History.vue'
 import ApiKeySetup from './components/ApiKeySetup.vue'
+import SeniatSetup from './components/SeniatSetup.vue'
 import brandLogo from './assets/logo/DualLedger.svg'
 import { processImage } from './utils/ocr.js'
 import { hasApiKey } from './utils/apiKey.js'
@@ -116,6 +126,7 @@ function emptyRecord(nro) {
     fecha: '',
     rif: '',
     nombreRazon: '',
+    porcentajeContribucion: '',
     nroFactura: '',
     nroControl: '',
     nroNotaDebito: '',
@@ -142,7 +153,7 @@ function emptyRecord(nro) {
 
 export default {
   name: 'App',
-  components: { ImageUploader, DataPreview, ExcelExport, History, ApiKeySetup },
+  components: { ImageUploader, DataPreview, ExcelExport, History, ApiKeySetup, SeniatSetup },
   data() {
     return {
       brandLogo,
@@ -340,6 +351,12 @@ export default {
 
     toggleTheme() {
       this.setTheme(this.theme === 'dark' ? 'light' : 'dark')
+    },
+
+    openSeniatSetup() {
+      if (this.$refs.seniatSetupRef) {
+        this.$refs.seniatSetupRef.show()
+      }
     }
   }
 }
@@ -507,6 +524,26 @@ html, body {
   justify-content: center;
   transition: background 0.2s;
   flex-shrink: 0;
+}
+
+.tools-toggle {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.tools-toggle:hover {
+  background: rgba(255, 255, 255, 0.24);
 }
 
 .theme-toggle:hover {

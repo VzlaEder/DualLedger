@@ -6,3 +6,7 @@ dist/
 .DS_Store
 Thumbs.db
 *.local
+devweb.log
+devweb.err.log
+worker/.wrangler/
+worker/e2e.json

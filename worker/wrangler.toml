@@ -1,0 +1,10 @@
+name = "dual-ledger-seniat"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+# Caché compartida de RIF entre usuarios.
+# Rellenar `id` tras ejecutar:
+#   npx wrangler kv namespace create RIF_CACHE
+[[kv_namespaces]]
+binding = "RIF_CACHE"
+id = "a610441d78b7474692ff7b2e831b9210"

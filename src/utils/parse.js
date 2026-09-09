@@ -191,6 +191,7 @@ export function createEmptyRecord() {
     fecha: '',
     rif: '',
     nombreRazon: '',
+    porcentajeContribucion: '',
     nroFactura: '',
     nroControl: '',
     nroNotaDebito: '',
