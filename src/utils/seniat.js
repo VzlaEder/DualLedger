@@ -6,8 +6,9 @@ const CACHE_PREFIX = 'dualledger-seniat:'
 const MAX_ATTEMPTS = 3
 const ATTEMPT_DELAY_MS = 3000
 
-let WORKER_URL = getWorkerUrl() || import.meta.env.VITE_SENIAT_WORKER_URL || ''
-if (!WORKER_URL && import.meta.env.DEV) WORKER_URL = 'http://127.0.0.1:8787'
+let WORKER_URL = import.meta.env.DEV
+  ? 'http://127.0.0.1:8787'
+  : (import.meta.env.VITE_SENIAT_WORKER_URL || '')
 
 function workerUrl() {
   return getWorkerUrl() || WORKER_URL
@@ -111,7 +112,7 @@ async function lookupSharedCache(rif, signal) {
   return null
 }
 
-export async function verificarRifEnSeniat(rif, { forceRefresh = false, signal } = {}) {
+export async function verificarRifEnSeniat(rif, { forceRefresh = false, signal, onCaptchaNeeded } = {}) {
   const normalized = normalizeRif(rif)
   if (!normalized) throw new Error('No hay RIF para verificar')
   if (!workerAvailable()) throw new Error('El servicio SENIAT no está configurado. Usa el botón \u2699 Herramientas.')
@@ -155,6 +156,15 @@ export async function verificarRifEnSeniat(rif, { forceRefresh = false, signal }
         codigo = await solveCaptchaWithTesseract(captcha.imageBase64)
       } catch (e2) {
         lastErr = e2
+      }
+    }
+    if (!codigo && typeof onCaptchaNeeded === 'function') {
+      try {
+        const manual = await onCaptchaNeeded(captcha)
+        codigo = sanitizeCaptcha(manual)
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw e
+        lastErr = e
       }
     }
     if (!codigo) continue

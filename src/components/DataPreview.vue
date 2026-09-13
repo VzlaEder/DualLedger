@@ -68,7 +68,7 @@
               &#10005; Cancelar
             </button>
             <button
-              v-else-if="normalizedRif(record.rif)"
+              v-else-if="normalizeRif(record.rif)"
               class="seniat-btn"
               :class="{ revalidated: hasSeniatData(record) }"
               @click.stop="verificarSENIAT(index)"
@@ -231,14 +231,23 @@
         &#128247; Agregar Más Imágenes
       </button>
     </div>
+
+    <CaptchaModal
+      v-if="captchaModalVisible"
+      :image-base64="captchaImage"
+      @submit="onCaptchaSubmit"
+      @cancel="onCaptchaCancel"
+    />
   </div>
 </template>
 
 <script>
 import { verificarRifEnSeniat } from '../utils/seniat.js'
+import CaptchaModal from './CaptchaModal.vue'
 
 export default {
   name: 'DataPreview',
+  components: { CaptchaModal },
   props: {
     records: { type: Array, default: () => [] },
     rawTexts: { type: Array, default: () => [] }
@@ -251,7 +260,11 @@ export default {
       showRawText: false,
       seniatBusy: {},
       seniatError: {},
-      seniatControllers: {}
+      seniatControllers: {},
+      captchaModalVisible: false,
+      captchaImage: '',
+      captchaPromiseResolve: null,
+      captchaPromiseReject: null
     }
   },
   computed: {
@@ -289,7 +302,10 @@ export default {
       this.seniatBusy = { ...this.seniatBusy, [index]: true }
       this.seniatError = { ...this.seniatError, [index]: '' }
       try {
-        const res = await verificarRifEnSeniat(rif, { signal: controller.signal })
+        const res = await verificarRifEnSeniat(rif, {
+          signal: controller.signal,
+          onCaptchaNeeded: (captcha) => this.requestManualCaptcha(controller.signal, captcha)
+        })
         const updated = {
           ...record,
           nombreRazon: res.nombreRazon || record.nombreRazon,
@@ -313,7 +329,49 @@ export default {
         const c = this.seniatControllers[index]
         if (c && !c.signal.aborted) c.abort()
         this.seniatControllers = { ...this.seniatControllers, [index]: null }
+        this.closeCaptchaModal()
       }
+    },
+
+    requestManualCaptcha(signal, captcha) {
+      return new Promise((resolve, reject) => {
+        this.captchaImage = captcha.imageBase64
+        this.captchaModalVisible = true
+        this.captchaPromiseResolve = resolve
+        this.captchaPromiseReject = reject
+        if (signal) {
+          const onAbort = () => {
+            this.closeCaptchaModal()
+            const err = new Error('Verificación cancelada')
+            err.name = 'AbortError'
+            reject(err)
+          }
+          signal.addEventListener('abort', onAbort, { once: true })
+        }
+      })
+    },
+
+    onCaptchaSubmit(codigo) {
+      const resolve = this.captchaPromiseResolve
+      this.closeCaptchaModal()
+      if (resolve) resolve(codigo)
+    },
+
+    onCaptchaCancel() {
+      const reject = this.captchaPromiseReject
+      this.closeCaptchaModal()
+      if (reject) {
+        const err = new Error('Verificación cancelada por el usuario')
+        err.name = 'AbortError'
+        reject(err)
+      }
+    },
+
+    closeCaptchaModal() {
+      this.captchaModalVisible = false
+      this.captchaImage = ''
+      this.captchaPromiseResolve = null
+      this.captchaPromiseReject = null
     },
 
     cancelarSENIAT(index) {

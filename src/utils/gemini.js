@@ -46,8 +46,7 @@ export async function recognizeWithGemini(imageFile, onProgress, options = {}) {
     onProgress({ status: 'convirtiendo imagen', progress: 0.1 })
   }
 
-  const base64 = await fileToBase64(imageFile)
-  const mimeType = imageFile.type || 'image/jpeg'
+  const { mimeType, data: base64 } = await prepareImageForGemini(imageFile)
 
   if (onProgress) {
     onProgress({ status: 'enviando a Gemini', progress: 0.3 })
@@ -104,6 +103,7 @@ export async function recognizeWithGemini(imageFile, onProgress, options = {}) {
 
   if (!response.ok) {
     const errorBody = await response.text()
+    console.error('[Gemini] HTTP', response.status, 'body:', errorBody)
     let serverMsg = ''
     try {
       const info = JSON.parse(errorBody)
@@ -319,4 +319,59 @@ function fileToBase64(file) {
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
+}
+
+const MAX_IMAGE_DIMENSION = 1600
+
+function resizeImage(img) {
+  const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(img.naturalWidth, img.naturalHeight))
+  const width = Math.max(1, Math.round(img.naturalWidth * scale))
+  const height = Math.max(1, Math.round(img.naturalHeight * scale))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, width, height)
+  ctx.drawImage(img, 0, 0, width, height)
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('No se pudo comprimir la imagen'))
+        return
+      }
+      resolve(blob)
+    }, 'image/jpeg', 0.9)
+  })
+}
+
+async function prepareImageForGemini(imageFile) {
+  if (typeof document === 'undefined') {
+    const base64 = await fileToBase64(imageFile)
+    return { mimeType: imageFile.type || 'image/jpeg', data: base64 }
+  }
+
+  const url = URL.createObjectURL(imageFile)
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image()
+      el.onload = () => resolve(el)
+      el.onerror = () => reject(new Error('No se pudo cargar la imagen'))
+      el.src = url
+    })
+    const blob = await resizeImage(img)
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result.split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+    return { mimeType: blob.type || 'image/jpeg', data: base64 }
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }

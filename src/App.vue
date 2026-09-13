@@ -105,6 +105,7 @@
       <div class="progress-bar" v-if="progress > 0">
         <div class="progress-fill" :style="{ width: progress + '%' }"></div>
       </div>
+      <button class="loading-cancel" @click="cancelProcessing">&#10005; Cancelar</button>
     </div>
   </div>
 </template>
@@ -169,6 +170,7 @@ export default {
       loading: false,
       loadingMessage: '',
       progress: 0,
+      processingAbortController: null,
       canInstall: false,
       deferredPrompt: null,
       hasApiKey: hasApiKey(),
@@ -189,30 +191,45 @@ export default {
   },
   methods: {
     async handleProcessStart(pendingItems) {
-      this.loading = true
-      this.progress = 0
+      const controller = new AbortController()
+      this.processingAbortController = controller
 
-      for (let i = 0; i < pendingItems.length; i++) {
-        const item = pendingItems[i]
-        this.loadingMessage = `Procesando "${item.file.name}" (${i + 1}/${pendingItems.length})...`
+      try {
+        this.loading = true
+        this.progress = 0
 
+        for (let i = 0; i < pendingItems.length; i++) {
+          const item = pendingItems[i]
+          this.loadingMessage = `Procesando "${item.file.name}" (${i + 1}/${pendingItems.length})...`
+
+          if (this.$refs.uploaderRef) {
+            const queueIndex = this.$refs.uploaderRef.queue.indexOf(item)
+            this.$refs.uploaderRef.updateItemStatus(queueIndex, 'processing')
+          }
+
+          try {
+            await this.handleImageLoaded(item.file, item.file.name, item.handwritten, controller.signal)
+            if (this.$refs.uploaderRef) {
+              const queueIndex = this.$refs.uploaderRef.queue.indexOf(item)
+              this.$refs.uploaderRef.updateItemStatus(queueIndex, 'done')
+            }
+          } catch (e) {
+            if (e && e.name === 'AbortError') throw e
+            if (this.$refs.uploaderRef) {
+              const queueIndex = this.$refs.uploaderRef.queue.indexOf(item)
+              this.$refs.uploaderRef.updateItemStatus(queueIndex, 'error')
+            }
+          }
+
+if (controller.signal.aborted) break
+      }
+
+      if (controller.signal.aborted) {
+        this.loadingMessage = 'Procesamiento cancelado'
         if (this.$refs.uploaderRef) {
-          const queueIndex = this.$refs.uploaderRef.queue.indexOf(item)
-          this.$refs.uploaderRef.updateItemStatus(queueIndex, 'processing')
+          this.$refs.uploaderRef.resetProcessing()
         }
-
-        try {
-          await this.handleImageLoaded(item.file, item.file.name, item.handwritten)
-          if (this.$refs.uploaderRef) {
-            const queueIndex = this.$refs.uploaderRef.queue.indexOf(item)
-            this.$refs.uploaderRef.updateItemStatus(queueIndex, 'done')
-          }
-        } catch {
-          if (this.$refs.uploaderRef) {
-            const queueIndex = this.$refs.uploaderRef.queue.indexOf(item)
-            this.$refs.uploaderRef.updateItemStatus(queueIndex, 'error')
-          }
-        }
+        return
       }
 
       this.loading = false
@@ -223,9 +240,29 @@ export default {
       }
 
       this.currentTab = 'preview'
+      } catch (e) {
+        if (e && e.name === 'AbortError') {
+          this.loadingMessage = 'Procesamiento cancelado'
+        }
+      } finally {
+        this.loading = false
+        this.progress = 0
+        this.processingAbortController = null
+      }
     },
 
-    async handleImageLoaded(file, fileName, handwritten = false) {
+    cancelProcessing() {
+      if (this.processingAbortController) {
+        this.processingAbortController.abort()
+      }
+      this.loading = false
+      this.progress = 0
+      if (this.$refs.uploaderRef) {
+        this.$refs.uploaderRef.resetProcessing()
+      }
+    },
+
+    async handleImageLoaded(file, fileName, handwritten = false, signal = null) {
       this.progress = 0
 
       const result = await processImage(file, (p) => {
@@ -241,9 +278,17 @@ export default {
           ? 'Analizando documento con Gemini...'
           : p.status === 'parseando datos'
           ? 'Estructurando datos...'
+          : p.status === 'gemini-fallback'
+          ? 'Gemini falló; usando Tesseract (OCR local)...'
           : `Procesando "${fileName}"...`
         this.progress = Math.round((p.progress || 0) * 100)
-      }, { handwritten })
+      }, { handwritten, signal })
+
+      if (signal && signal.aborted) {
+        const err = new Error('Operación cancelada')
+        err.name = 'AbortError'
+        throw err
+      }
 
       this.rawTexts.push({
         fileName: fileName || 'Imagen',
@@ -665,6 +710,23 @@ html, body {
   background: var(--accent);
   border-radius: 3px;
   transition: width 0.3s ease;
+}
+
+.loading-cancel {
+  margin-top: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: white;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.loading-cancel:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 @media (max-width: 480px) {
