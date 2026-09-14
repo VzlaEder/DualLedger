@@ -321,7 +321,8 @@ function fileToBase64(file) {
   })
 }
 
-const MAX_IMAGE_DIMENSION = 1600
+const MAX_IMAGE_DIMENSION = 2048
+const MAX_IMAGE_BYTES = 19 * 1024 * 1024
 
 function resizeImage(img) {
   const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(img.naturalWidth, img.naturalHeight))
@@ -349,29 +350,62 @@ function resizeImage(img) {
   })
 }
 
+function fileToImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(img)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('No se pudo cargar la imagen'))
+    }
+    img.src = url
+  })
+}
+
+function bytesFromBase64(base64) {
+  return Math.floor(base64.length * 3 / 4)
+}
+
 async function prepareImageForGemini(imageFile) {
   if (typeof document === 'undefined') {
     const base64 = await fileToBase64(imageFile)
     return { mimeType: imageFile.type || 'image/jpeg', data: base64 }
   }
 
-  const url = URL.createObjectURL(imageFile)
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const el = new Image()
-      el.onload = () => resolve(el)
-      el.onerror = () => reject(new Error('No se pudo cargar la imagen'))
-      el.src = url
-    })
-    const blob = await resizeImage(img)
-    const base64 = await new Promise((resolve, reject) => {
+  const baseMime = imageFile.type || 'image/jpeg'
+  const needsConversion = baseMime !== 'image/jpeg' && baseMime !== 'image/pjpeg'
+
+  const img = await fileToImage(imageFile)
+  const maxSide = Math.max(img.naturalWidth, img.naturalHeight)
+  const needsResize = maxSide > MAX_IMAGE_DIMENSION
+
+  let blob
+  if (needsResize || needsConversion) {
+    blob = await resizeImage(img)
+  }
+
+  let mimeType
+  let base64
+  if (blob) {
+    mimeType = 'image/jpeg'
+    base64 = await new Promise((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(reader.result.split(',')[1])
       reader.onerror = reject
       reader.readAsDataURL(blob)
     })
-    return { mimeType: blob.type || 'image/jpeg', data: base64 }
-  } finally {
-    URL.revokeObjectURL(url)
+  } else {
+    base64 = await fileToBase64(imageFile)
+    mimeType = baseMime
   }
+
+  if (bytesFromBase64(base64) > MAX_IMAGE_BYTES) {
+    throw new Error('La imagen es demasiado grande para Gemini incluso comprimida (más de 19MB).')
+  }
+
+  return { mimeType, data: base64 }
 }

@@ -113,6 +113,10 @@
             <span class="field-label">% Contribución:</span>
             <span class="field-value">{{ hasPorcentaje(record) ? record.porcentajeContribucion + '%' : '-' }}</span>
           </div>
+          <div class="field-row" v-if="record.condicion">
+            <span class="field-label">Condición:</span>
+            <span class="field-value">{{ record.condicion }}</span>
+          </div>
           <div class="field-row" :class="{ doubtful: isDoubtful(record, 'nroFactura') }">
             <span class="field-label">Nro. Factura:</span>
             <span class="field-value">{{ record.nroFactura || '-' }}</span>
@@ -297,6 +301,12 @@ export default {
       const rif = this.normalizeRif(record.rif)
       if (!rif) return
 
+      const ERROR_NAME = /no\s+coincide|el\s+c[dó]digo|la\s+imagen|rechazad|no\s+es\s+correcto/i
+      if (record.nombreRazon && ERROR_NAME.test(record.nombreRazon)) {
+        const cleaned = { ...record, nombreRazon: '' }
+        this.$emit('update-record', index, cleaned)
+      }
+
       const controller = new AbortController()
       this.seniatControllers = { ...this.seniatControllers, [index]: controller }
       this.seniatBusy = { ...this.seniatBusy, [index]: true }
@@ -309,7 +319,8 @@ export default {
         const updated = {
           ...record,
           nombreRazon: res.nombreRazon || record.nombreRazon,
-          porcentajeContribucion: res.porcentajeContribucion
+          porcentajeContribucion: res.porcentajeContribucion,
+          condicion: res.condicion || record.condicion
         }
         this.$emit('update-record', index, updated)
       } catch (e) {

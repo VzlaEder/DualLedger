@@ -1,6 +1,7 @@
 const SENIAT_BASE = 'http://contribuyente.seniat.gob.ve'
 const FORM_URL = `${SENIAT_BASE}/BuscaRif/BuscaRif.jsp`
 const CAPTCHA_URL = `${SENIAT_BASE}/BuscaRif/Captcha.jpg`
+const SENIAT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
 const CF_API = 'https://api.cloudflare.com/client/v4'
 const WORKER_NAME = 'dual-ledger-seniat'
@@ -143,7 +144,19 @@ function normalizeCookies(cookies) {
 }
 
 function stripCookieParts(cookies) {
-  return cookies.map((c) => c.split(';')[0]).filter(Boolean)
+  return (cookies || [])
+    .filter((c) => typeof c === 'string')
+    .map((c) => c.split(';')[0])
+    .filter(Boolean)
+    .filter((c) => c.includes('='))
+}
+
+function decodeHtml(bytes) {
+  try {
+    const utf8 = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    if (!utf8.includes('\uFFFD')) return utf8
+  } catch (e) {}
+  return new TextDecoder('windows-1252').decode(bytes)
 }
 
 function arrayBufferToBase64(buffer) {
@@ -183,32 +196,88 @@ function extractField(html, labelRe, valueRe, flags = 'i') {
   return out || null
 }
 
-function looksLikeRetry(html) {
-  const norm = html.toLowerCase()
-  return (
-    norm.includes('captcha') ||
-    norm.includes('c\u00f3digo') ||
-    norm.includes('codigo') ||
-    norm.includes('intento')
-  )
+function nameBeforeActivity(text) {
+  const m = text.match(/Actividad\s+Econ[o\u00f3]mica[^<\n]{0,40}[:<]/i)
+  if (!m) return null
+  const before = text.slice(0, m.index)
+  const lines = before.split(/\r?\n/).map(l => l.replace(/<[^>]+>/g, '').trim()).filter(Boolean)
+  if (!lines.length) return null
+  const out = lines[lines.length - 1].replace(/\s{2,}/g, ' ')
+  return cleanName(out)
 }
 
-function parseResult(html) {
+const ERROR_PATTERNS = /(no\s+coincide|rechazad|intento|no\s+es\s+correcto)/i
+
+function looksLikeRetry(html) {
+  const norm = html.toLowerCase()
+  return ERROR_PATTERNS.test(norm)
+}
+
+function isErrorMessageLike(s) {
+  return !!s && ERROR_PATTERNS.test(String(s))
+}
+
+function cleanName(s) {
+  if (!s) return null
+  let out = s.replace(/&nbsp;/g, ' ').replace(/<[^>]+>/g, ' ').trim()
+  out = out.replace(/^[vejpgVJPG]\d{6,10}\s+/, '')
+  out = out.replace(/\s{2,}/g, ' ').trim()
+  if (isErrorMessageLike(out)) return null
+  return out || null
+}
+
+function parseResult(html, debug = false) {
   const text = html.replace(/<script[\s\S]*?<\/script>/gi, '')
 
-  const name =
-    extractField(text, /(?:raz\u00f3n social|razon social|nombre\s*del\s*contribuyente|denominaci\u00f3n)\s*[:.<\s]*/i, /([^<\n]{2,120})/)
-    || extractField(text, /<b>\s*<font[^>]*>\s*([^<]{2,120})\s*<\/font>\s*<\/b>/i, /([^<]{2,120})/i)
+  let name = extractField(text, /(?:raz\u00f3n social|razon social|nombre\s*del\s*contribuyente|denominaci\u00f3n)\s*[:.<\s]*/i, /([^<\n]{2,120})/)
+  || (() => {
+    const bolds = [...text.matchAll(/\s*<b>\s*<font[^>]*>\s*([^<]{2,150}?)\s*<\/b>\s*<\/font>|\s*<b>\s*<font[^>]*>\s*([^<]{2,150}?)\s*<\/font>\s*<\/b>/ig)]
+    for (const m of bolds) {
+      const candidate = cleanName(m[1] || m[2])
+      if (candidate) return candidate
+    }
+    return null
+  })()
+  || nameBeforeActivity(text)
+
+  if (isErrorMessageLike(name)) {
+    name = null
+  }
 
   let pct = null
-  const pctM = text.match(/(\d{2,3}(?:[.,]\d{1,2})?)\s*%\s*(?:de\s*)?contribuci[o\u00f3]n/i)
-  if (pctM) pct = pctM[1]
+  const pctRet = text.match(/retenci[o\u00f3]n\s*(?:del|de\s+un)\s+(\d{2,3}(?:[.,]\d{1,2})?)\s*%/i)
+  if (pctRet) pct = pctRet[1]
+  if (pct === null) {
+    const pctM = text.match(/(\d{2,3}(?:[.,]\d{1,2})?)\s*%\s*(?:de\s*)?contribuci[o\u00f3]n/i)
+    if (pctM) pct = pctM[1]
+  }
   if (pct === null) {
     const pctM2 = text.match(/contribuci[o\u00f3]n[^%]*?(\d{2,3}(?:[.,]\d{1,2})?)\s*%/i)
     if (pctM2) pct = pctM2[1]
   }
 
-  return { name, pct }
+  let condicion = null
+  const condBlock = text.match(/condici[o\u00f3]n\s*[:.<\s]*\s*([\s\S]{4,200}?)(?:\n\s*\n|La\s+condici[o\u00f3]n|<table|<br\s*\/?>\s*<br)/i)
+  if (condBlock) {
+    condicion = condBlock[1].replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').trim()
+  } else {
+    const condM = text.match(/condici[o\u00f3]n(?:\s*del\s*contribuyente)?\s*[:.<\s]*/i)
+    if (condM) {
+      const after = text.slice(condM.index + condM[0].length).match(/([A-Z\u00c0-\u017f][^<]{2,120})/)
+      if (after) condicion = after[1].replace(/\s{2,}/g, ' ').trim()
+    }
+  }
+  if (condicion) condicion = condicion.replace(/\s+/g, ' ').trim()
+  if (condicion && /^\s*(Contribuyente|Agente|No|Sujeto|Acredita)/i.test(condicion) === false) {
+    condicion = null
+  }
+
+  const result = { name, pct, condicion }
+  if (debug) {
+    result.rawHtml = html.slice(0, 4000)
+    result.rawLength = html.length
+  }
+  return result
 }
 
 export default {
@@ -222,12 +291,19 @@ export default {
     if (url.pathname === '/captcha' && request.method === 'POST') {
       try {
         const { cookies, imageBase64 } = await fetchWithRetry(async () => {
-          const formRes = await fetchWithTimeout(FORM_URL, { redirect: 'follow' })
-          const cookies = stripCookieParts(readCookies(formRes.headers))
-          const cookieHeader = cookies.join('; ')
+          const formRes = await fetchWithTimeout(FORM_URL, { redirect: 'follow', headers: { 'User-Agent': SENIAT_UA } })
+          const formCookies = stripCookieParts(readCookies(formRes.headers))
+          const cookieHeader = formCookies.join('; ')
           const captchaRes = await fetchWithTimeout(CAPTCHA_URL, {
-            headers: cookieHeader ? { Cookie: cookieHeader } : {}
+            headers: { 'User-Agent': SENIAT_UA, ...(cookieHeader ? { Cookie: cookieHeader, Referer: FORM_URL } : { Referer: FORM_URL }) }
           })
+          const captchaCookies = stripCookieParts(readCookies(captchaRes.headers))
+          const cookies = [...formCookies, ...captchaCookies.reduce((acc, c) => {
+            const name = c.split('=')[0]
+            if (acc.some((x) => x.split('=')[0] === name)) return acc
+            acc.push(c)
+            return acc
+          }, [])]
           const buf = await captchaRes.arrayBuffer()
           if (!buf || buf.byteLength === 0) throw new Error('SENIAT no devolvi\u00f3 imagen de captcha')
           return { cookies, imageBase64: arrayBufferToBase64(buf) }
@@ -270,6 +346,7 @@ export default {
       const codigo = String(body.codigo || '').trim()
       const cookieHeader = stripCookieParts(normalizeCookies(body.cookies)).join('; ')
       const forceRefresh = !!body.forceRefresh
+      const debug = !!body.debug
 
       if (!rif || !codigo) {
         return json({ ok: false, error: 'Faltan rif o codigo' }, 400)
@@ -280,6 +357,9 @@ export default {
           const cached = await env.RIF_CACHE.get(rif)
           if (cached) {
             const data = JSON.parse(cached)
+            if (debug) {
+              return json({ ...data, ok: true, fromCache: true, rawHtml: '(en cache)', rawLength: 0 })
+            }
             return json({ ...data, ok: true, fromCache: true })
           }
         }
@@ -290,7 +370,12 @@ export default {
         form.set('codigo', codigo)
         form.set('busca', 'Buscar')
 
-        const headers = { 'Content-Type': 'application/x-www-form-urlencoded' }
+        const headers = {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': SENIAT_UA,
+          Referer: FORM_URL,
+          Origin: SENIAT_BASE
+        }
         if (cookieHeader) headers.Cookie = cookieHeader
 
         const postRes = await fetchWithRetry(() =>
@@ -302,27 +387,51 @@ export default {
           })
         )
 
-        const html = await postRes.text()
-        const { name, pct } = parseResult(html)
+        const html = decodeHtml(await postRes.arrayBuffer())
+        const parsed = parseResult(html, debug)
+        const { name, pct } = parsed
 
-        if (!name && looksLikeRetry(html)) {
-          return json({ ok: false, captchaError: true, retryHint: MAX_RETRY_HINT })
+        if (looksLikeRetry(html)) {
+          const resp = { ok: false, captchaError: true, retryHint: MAX_RETRY_HINT }
+          if (debug) {
+            resp.rawHtml = html.slice(0, 8000)
+            resp.rawLength = html.length
+            resp.parsed = parsed
+            resp.meta = {
+              status: postRes.status,
+              headers: Object.fromEntries(postRes.headers.entries())
+            }
+          }
+          return json(resp)
         }
 
         if (!name && !pct) {
-          return json({ ok: false, error: 'No se encontraron datos para ese RIF', rawLength: html.length })
+          const resp = { ok: false, error: 'No se encontraron datos para ese RIF', rawLength: html.length }
+          if (debug) {
+            resp.rawHtml = html.slice(0, 4000)
+            resp.parsed = parsed
+            resp.meta = {
+              status: postRes.status,
+              headers: Object.fromEntries(postRes.headers.entries())
+            }
+          }
+          return json(resp)
         }
 
         const data = {
           rif,
           nombreRazon: name || '',
-          porcentajeContribucion: pct === null ? null : Number(pct.replace(',', '.'))
+          porcentajeContribucion: pct === null ? null : Number(pct.replace(',', '.')),
+          condicion: parsed.condicion || ''
         }
 
         if (env.RIF_CACHE) {
           await env.RIF_CACHE.put(rif, JSON.stringify(data))
         }
 
+        if (debug) {
+          return json({ ...data, ok: true, fromCache: false, rawHtml: html.slice(0, 4000), rawLength: html.length, meta: { status: postRes.status, headers: Object.fromEntries(postRes.headers.entries()) } })
+        }
         return json({ ...data, ok: true, fromCache: false })
       } catch (e) {
         return json({ ok: false, error: 'Fall\u00f3 la consulta al SENIAT', detail: String((e && e.message) || e) }, 502)
