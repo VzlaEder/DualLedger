@@ -153,7 +153,15 @@ export async function verificarRifEnSeniat(rif, { forceRefresh = false, signal, 
       lastErr = e
     }
     if (!captcha || !captcha.ok) {
-      lastErr = new Error((captcha && captcha.error) || 'No se pudo obtener el captcha del SENIAT')
+      const detail = (captcha && captcha.detail) || ''
+      const errMsg = (captcha && captcha.error) || 'No se pudo obtener el captcha del SENIAT'
+      if (detail.includes('Timeout') || detail.includes('timeout') || detail.includes('aborted')) {
+        lastErr = new Error('El SENIAT no responde. Puede estar temporalmente fuera de servicio. Intenta de nuevo en unos minutos.')
+      } else if (detail.includes('ECONNREFUSED') || detail.includes('fetch failed')) {
+        lastErr = new Error('No se pudo conectar con el SENIAT. Verifica tu conexión a internet.')
+      } else {
+        lastErr = new Error(errMsg)
+      }
       await delay(ATTEMPT_DELAY_MS, signal)
       continue
     }

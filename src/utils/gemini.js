@@ -180,30 +180,55 @@ export async function transcribeCaptchaWithGemini(base64Image, { signal } = {}) 
   }
 
   const apiUrl = `${GEMINI_API_URL}?key=${encodeURIComponent(credential)}`
-  const res = await fetch(apiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
-    body: JSON.stringify(requestBody),
-    cache: 'no-store',
-    signal
-  })
 
-  if (!res.ok) {
-    const errorBody = await res.text()
-    let serverMsg = ''
-    try {
-      const info = JSON.parse(errorBody)
-      if (info && info.error && info.error.message) serverMsg = ` (${info.error.message})`
-    } catch (e) { /* noop */ }
-    throw new Error(`Error de Gemini al transcribir el captcha (${res.status})${serverMsg}`)
+  let lastError = null
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (signal && signal.aborted) throw Object.assign(new Error('Verificación cancelada'), { name: 'AbortError' })
+
+    if (attempt > 0) {
+      await new Promise(r => setTimeout(r, RETRY_DELAY_MS * attempt))
+    }
+
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      body: JSON.stringify(requestBody),
+      cache: 'no-store',
+      signal
+    })
+
+    if (res.status === 503) {
+      lastError = 'Gemini sobrecargado temporalmente'
+      continue
+    }
+
+    if (res.status === 401) {
+      throw new Error('Credencial de Gemini expirada. El token "AQ" caduca, genera uno nuevo en Google AI Studio.')
+    }
+
+    if (res.status === 403) {
+      throw new Error('Credencial de Gemini sin permisos. Verifica tu cuenta en Google AI Studio.')
+    }
+
+    if (!res.ok) {
+      const errorBody = await res.text()
+      let serverMsg = ''
+      try {
+        const info = JSON.parse(errorBody)
+        if (info && info.error && info.error.message) serverMsg = ` (${info.error.message})`
+      } catch (e) { /* noop */ }
+      throw new Error(`Error de Gemini al transcribir el captcha (${res.status})${serverMsg}`)
+    }
+
+    const data = await res.json()
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+      throw new Error('Respuesta vacía de Gemini para el captcha')
+    }
+
+    return data.candidates[0].content.parts.map(p => p.text).join('').trim()
   }
 
-  const data = await res.json()
-  if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-    throw new Error('Respuesta vacía de Gemini para el captcha')
-  }
-
-  return data.candidates[0].content.parts.map(p => p.text).join('').trim()
+  throw lastError || new Error('Gemini no disponible tras reintentos')
 }
 
 function parseGeminiResponse(text) {

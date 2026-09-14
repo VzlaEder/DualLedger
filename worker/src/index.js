@@ -15,8 +15,8 @@ const CORS_HEADERS = {
 }
 
 const MAX_RETRY_HINT = 3
-const FETCH_ATTEMPTS = 1
-const FETCH_RETRY_DELAY_MS = 1200
+const FETCH_ATTEMPTS = 2
+const FETCH_RETRY_DELAY_MS = 2000
 
 async function cfRequest(token, path, options = {}) {
   const res = await fetch(`${CF_API}${path}`, {
@@ -169,7 +169,7 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary)
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 25000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
   return fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) })
 }
 
