@@ -283,7 +283,7 @@ export default {
   },
   methods: {
     normalizeRif(rif) {
-      return String(rif || '').replace(/\s+/g, '').toUpperCase()
+      return String(rif || '').replace(/[\s-]/g, '').toUpperCase()
     },
 
     hasSeniatData(record) {
@@ -313,6 +313,7 @@ export default {
       this.seniatError = { ...this.seniatError, [index]: '' }
       try {
         const res = await verificarRifEnSeniat(rif, {
+          forceRefresh: true,
           signal: controller.signal,
           onCaptchaNeeded: (captcha) => this.requestManualCaptcha(controller.signal, captcha)
         })

@@ -2,7 +2,8 @@ import { PRINT_EXTRACTION_PROMPT, INVOICE_EXTRACTION_PROMPT } from './prompts'
 import { getApiKey } from './apiKey'
 import { createEmptyRecord } from './parse'
 
-const GEMINI_MODEL = 'gemini-3.1-flash-lite'
+const GEMINI_MODEL = 'gemini-3.5-flash-lite'
+const GEMINI_CAPTCHA_MODEL = 'gemini-3.5-flash-lite'
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
 const MAX_RETRIES = 3
@@ -179,7 +180,7 @@ export async function transcribeCaptchaWithGemini(base64Image, { signal } = {}) 
     }
   }
 
-  const apiUrl = `${GEMINI_API_URL}?key=${encodeURIComponent(credential)}`
+  const captchaApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_CAPTCHA_MODEL}:generateContent?key=${encodeURIComponent(credential)}`
 
   let lastError = null
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -189,7 +190,7 @@ export async function transcribeCaptchaWithGemini(base64Image, { signal } = {}) 
       await new Promise(r => setTimeout(r, RETRY_DELAY_MS * attempt))
     }
 
-    const res = await fetch(apiUrl, {
+    const res = await fetch(captchaApiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
       body: JSON.stringify(requestBody),

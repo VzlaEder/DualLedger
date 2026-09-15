@@ -321,7 +321,7 @@ export default {
       } catch (e) {
         return json({ ok: false, error: 'JSON inv\u00e1lido' }, 400)
       }
-      const rif = String(body.rif || '').trim().toUpperCase()
+      const rif = String(body.rif || '').replace(/\s+/g, '').replace(/-/g, '').toUpperCase()
       if (!rif) return json({ ok: false, error: 'Falta rif' }, 400)
       if (!env.RIF_CACHE) return json({ ok: false, hit: false })
 
@@ -342,7 +342,7 @@ export default {
         return json({ ok: false, error: 'JSON inv\u00e1lido' }, 400)
       }
 
-      const rif = String(body.rif || '').trim().toUpperCase()
+      const rif = String(body.rif || '').replace(/\s+/g, '').replace(/-/g, '').toUpperCase()
       const codigo = String(body.codigo || '').trim()
       const cookieHeader = stripCookieParts(normalizeCookies(body.cookies)).join('; ')
       const forceRefresh = !!body.forceRefresh

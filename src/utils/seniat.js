@@ -19,7 +19,7 @@ function workerAvailable() {
 }
 
 function normalizeRif(rif) {
-  return String(rif || '').replace(/\s+/g, '').toUpperCase()
+  return String(rif || '').replace(/[\s-]/g, '').toUpperCase()
 }
 
 function sanitizeCaptcha(text) {
