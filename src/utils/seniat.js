@@ -7,7 +7,7 @@ const MAX_ATTEMPTS = 3
 const ATTEMPT_DELAY_MS = 3000
 
 let WORKER_URL = import.meta.env.DEV
-  ? ''
+  ? '/api'
   : (import.meta.env.VITE_SENIAT_WORKER_URL || '')
 
 function workerUrl() {

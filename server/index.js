@@ -11,6 +11,7 @@ const __dirname = dirname(__filename)
 config({ path: join(__dirname, '..', '.env') })
 
 const app = express()
+const router = express.Router()
 app.use(cors())
 app.use(express.json({ limit: '10mb' }))
 
@@ -157,7 +158,7 @@ async function saveCache(rif, data) {
 
 // === Rutas ===
 
-app.get('/', (req, res) => {
+router.get('/', (req, res) => {
   res.json({
     ok: true,
     service: 'dualledger-proxy',
@@ -166,7 +167,7 @@ app.get('/', (req, res) => {
   })
 })
 
-app.post('/captcha', async (req, res) => {
+router.post('/captcha', async (req, res) => {
   try {
     const result = await fetchWithRetry(async () => {
       const formRes = await fetchWithTimeout(FORM_URL, {
@@ -202,7 +203,7 @@ app.post('/captcha', async (req, res) => {
   }
 })
 
-app.post('/lookup', async (req, res) => {
+router.post('/lookup', async (req, res) => {
   const rif = String(req.body.rif || '').replace(/[\s-]/g, '').toUpperCase().trim()
   if (!rif) return res.status(400).json({ ok: false, error: 'Falta rif' })
 
@@ -213,7 +214,7 @@ app.post('/lookup', async (req, res) => {
   res.json({ ok: false, hit: false })
 })
 
-app.post('/verify', async (req, res) => {
+router.post('/verify', async (req, res) => {
   const rif = String(req.body.rif || '').replace(/[\s-]/g, '').toUpperCase().trim()
   const codigo = String(req.body.codigo || '').trim()
   const cookieHeader = (req.body.cookies || []).join('; ')
@@ -280,6 +281,8 @@ app.post('/verify', async (req, res) => {
     res.status(502).json({ ok: false, error: 'Falló la consulta al SENIAT', detail: String(e.message) })
   }
 })
+
+app.use('/api', router)
 
 export { app }
 
