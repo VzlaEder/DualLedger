@@ -1,10 +1,21 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
+import { app as seniatApp } from './server/index.js'
+
+function seniatProxy() {
+  return {
+    name: 'seniat-proxy',
+    configureServer(server) {
+      server.middlewares.use(seniatApp)
+    }
+  }
+}
 
 export default defineConfig({
   plugins: [
     vue(),
+    seniatProxy(),
     VitePWA({
       registerType: 'prompt',
       installPrompt: true,

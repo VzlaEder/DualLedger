@@ -68,7 +68,7 @@
               &#10005; Cancelar
             </button>
             <button
-              v-else-if="normalizeRif(record.rif) && hasSeniatData(record)"
+              v-else-if="normalizeRif(record.rif) && hasPorcentaje(record)"
               class="seniat-btn revalidated"
               disabled
               title="RIF verificado en el SENIAT"
@@ -317,6 +317,7 @@ export default {
       if (!record) return
       const rif = this.normalizeRif(record.rif)
       if (!rif || this.autoLookupPending.has(rif)) return
+      if (this.hasPorcentaje(record)) return
 
       this.autoLookupPending.add(rif)
       try {
@@ -331,6 +332,8 @@ export default {
           this.$emit('update-record', index, updated)
         }
       } catch (e) {
+        // Silencioso
+      } finally {
         this.autoLookupPending.delete(rif)
       }
     },

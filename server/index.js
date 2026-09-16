@@ -281,7 +281,12 @@ app.post('/verify', async (req, res) => {
   }
 })
 
-app.listen(PORT, () => {
-  console.log(`[DualLedger] Proxy local corriendo en http://127.0.0.1:${PORT}`)
-  console.log(`[DualLedger] Supabase: ${supabase ? 'Conectado' : 'Deshabilitado'}`)
-})
+export { app }
+
+const isDirectRun = process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('server/index.js')
+if (isDirectRun) {
+  app.listen(PORT, () => {
+    console.log(`[DualLedger] Proxy local corriendo en http://127.0.0.1:${PORT}`)
+    console.log(`[DualLedger] Supabase: ${supabase ? 'Conectado' : 'Deshabilitado'}`)
+  })
+}
