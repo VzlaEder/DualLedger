@@ -23,7 +23,7 @@ function normalizeRif(rif) {
 }
 
 function sanitizeCaptcha(text) {
-  return String(text || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10)
+  return String(text || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 10)
 }
 
 const ERROR_NAME_PATTERN = /no\s+coincide|el\s+c[dó]digo|la\s+imagen|rechazad|no\s+es\s+correcto/i
@@ -107,7 +107,7 @@ async function delay(ms, signal) {
   })
 }
 
-async function lookupSharedCache(rif, signal) {
+export async function lookupSharedCache(rif, signal) {
   try {
     const lookup = await postJson('/lookup', { rif }, signal)
     if (lookup && lookup.hit && lookup.ok) return lookup
@@ -167,24 +167,25 @@ export async function verificarRifEnSeniat(rif, { forceRefresh = false, signal, 
     }
 
     let codigo = null
-    try {
-      codigo = await solveCaptchaWithGemini(captcha.imageBase64, signal)
-    } catch (e) {
-      if (e && e.name === 'AbortError') throw e
-      console.warn('[SENIAT] Gemini falló en captcha, usando Tesseract:', e)
-      try {
-        codigo = await solveCaptchaWithTesseract(captcha.imageBase64)
-      } catch (e2) {
-        lastErr = e2
-      }
-    }
-    if (!codigo && typeof onCaptchaNeeded === 'function') {
+    if (typeof onCaptchaNeeded === 'function') {
       try {
         const manual = await onCaptchaNeeded(captcha)
         codigo = sanitizeCaptcha(manual)
       } catch (e) {
         if (e && e.name === 'AbortError') throw e
         lastErr = e
+      }
+    } else {
+      try {
+        codigo = await solveCaptchaWithGemini(captcha.imageBase64, signal)
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw e
+        console.warn('[SENIAT] Gemini falló en captcha, usando Tesseract:', e)
+        try {
+          codigo = await solveCaptchaWithTesseract(captcha.imageBase64)
+        } catch (e2) {
+          lastErr = e2
+        }
       }
     }
     if (!codigo) continue

@@ -68,14 +68,20 @@
               &#10005; Cancelar
             </button>
             <button
+              v-else-if="normalizeRif(record.rif) && hasSeniatData(record)"
+              class="seniat-btn revalidated"
+              disabled
+              title="RIF verificado en el SENIAT"
+            >
+              &#10003; Verificado
+            </button>
+            <button
               v-else-if="normalizeRif(record.rif)"
               class="seniat-btn"
-              :class="{ revalidated: hasSeniatData(record) }"
               @click.stop="verificarSENIAT(index)"
-              :title="hasSeniatData(record) ? 'Volver a consultar este RIF en el SENIAT' : 'Consultar nombre real y % contribución en el SENIAT'"
+              title="Consultar nombre real y % contribución en el SENIAT"
             >
-              <span v-if="hasSeniatData(record)">&#128260; Re-verificar</span>
-              <span v-else>&#127963; Verificar SENIAT</span>
+              &#127963; Verificar SENIAT
             </button>
             <button class="icon-btn edit" @click="toggleEdit(index)" :title="editingIndex === index ? 'Guardar' : 'Editar'">
               {{ editingIndex === index ? '&#10003;' : '&#9998;' }}
@@ -246,7 +252,7 @@
 </template>
 
 <script>
-import { verificarRifEnSeniat } from '../utils/seniat.js'
+import { verificarRifEnSeniat, lookupSharedCache } from '../utils/seniat.js'
 import CaptchaModal from './CaptchaModal.vue'
 
 export default {
@@ -268,7 +274,17 @@ export default {
       captchaModalVisible: false,
       captchaImage: '',
       captchaPromiseResolve: null,
-      captchaPromiseReject: null
+      captchaPromiseReject: null,
+      autoLookupPending: new Set()
+    }
+  },
+  mounted() {
+    this.autoLookupAll()
+  },
+  watch: {
+    records: {
+      handler() { this.autoLookupAll() },
+      deep: true
     }
   },
   computed: {
@@ -284,6 +300,39 @@ export default {
   methods: {
     normalizeRif(rif) {
       return String(rif || '').replace(/[\s-]/g, '').toUpperCase()
+    },
+
+    autoLookupAll() {
+      this.records.forEach((record, index) => {
+        const rif = this.normalizeRif(record.rif)
+        const busy = !!this.seniatBusy[index]
+        if (rif && !busy && !this.autoLookupPending.has(rif)) {
+          this.autoLookupSeniat(index)
+        }
+      })
+    },
+
+    async autoLookupSeniat(index) {
+      const record = this.records[index]
+      if (!record) return
+      const rif = this.normalizeRif(record.rif)
+      if (!rif || this.autoLookupPending.has(rif)) return
+
+      this.autoLookupPending.add(rif)
+      try {
+        const cached = await lookupSharedCache(rif)
+        if (cached && cached.ok && cached.hit) {
+          const updated = {
+            ...record,
+            nombreRazon: cached.nombreRazon || record.nombreRazon,
+            porcentajeContribucion: cached.porcentajeContribucion,
+            condicion: cached.condicion || record.condicion
+          }
+          this.$emit('update-record', index, updated)
+        }
+      } catch (e) {
+        this.autoLookupPending.delete(rif)
+      }
     },
 
     hasSeniatData(record) {

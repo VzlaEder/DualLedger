@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="captcha-overlay" @click.self="cancel">
+  <div class="captcha-overlay" @click.self="cancel">
     <div class="captcha-modal">
       <h3>&#127760; Verificación del SENIAT</h3>
       <p>No se pudo leer el captcha automáticamente. Escribe el código que ves en la imagen:</p>
@@ -56,7 +56,7 @@ export default {
   },
   methods: {
     submit() {
-      const clean = this.code.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10)
+      const clean = this.code.replace(/[^A-Za-z0-9]/g, '').slice(0, 10)
       if (!clean) return
       this.code = ''
       this.$emit('submit', clean)
@@ -117,7 +117,6 @@ export default {
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 0.9rem;
-  text-transform: uppercase;
   text-align: center;
   letter-spacing: 2px;
   background: var(--background);
