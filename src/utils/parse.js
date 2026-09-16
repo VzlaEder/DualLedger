@@ -132,7 +132,7 @@ function parseBlock(blockLines) {
 
   const controlNum = extractDocNumber(blockLines, /CONTROL\b/i)
   if (controlNum) {
-    record.nroControl = normalizeDocNumber(controlNum)
+    record.nroControl = normalizeControlNumber(controlNum)
   }
 
   const igtfMatch = text.match(/IGTF\s*[:.]?\s*([\d.,]+)/i)
@@ -263,6 +263,11 @@ function normalizeDocNumber(value) {
     }
   }
   return out
+}
+
+function normalizeControlNumber(value) {
+  if (!value) return ''
+  return String(value).replace(/[^A-Za-z0-9]/g, '').toUpperCase()
 }
 
 function tryParseFallback(fullText) {

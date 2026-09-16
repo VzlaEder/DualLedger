@@ -270,7 +270,7 @@ function mapToRecord(json) {
   record.nombreRazon = json.nombreRazon || ''
   record.fecha = json.fecha || ''
   record.nroFactura = cleanDocNumber(json.nroFactura)
-  record.nroControl = cleanDocNumber(json.nroControl)
+  record.nroControl = cleanControlNumber(json.nroControl)
   record.nroNotaCredito = cleanDocNumber(json.nroNotaCredito)
   record.nroNotaDebito = cleanDocNumber(json.nroNotaDebito)
   record.totalComprasIVA = parseNumber(json.totalComprasIVA)
@@ -301,6 +301,11 @@ function cleanDocNumber(value) {
     }
   }
   return out
+}
+
+function cleanControlNumber(value) {
+  if (!value) return ''
+  return String(value).replace(/[^A-Za-z0-9]/g, '').toUpperCase()
 }
 
 function parseNumber(value) {

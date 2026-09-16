@@ -16,7 +16,7 @@ CAMPOS A EXTRAER (usa null si no se encuentra el campo):
   "nombreRazon": "Razón social o nombre completo del emisor",
   "fecha": "Fecha en formato DD/MM/AAAA",
   "nroFactura": "Número de factura (solo dígitos)",
-  "nroControl": "Número de control (formato: XX-XXXXXXXX)",
+  "nroControl": "Número de control (alfanumérico, conserva letras y dígitos, ej: ZZP0023685, AA12345678, 20-12345678)",
   "nroNotaCredito": "Número de nota de crédito (solo dígitos)",
   "nroNotaDebito": "Número de nota de débito (solo dígitos)",
   "totalComprasIVA": "Monto total con IVA incluido (número decimal, sin símbolo de moneda)",
@@ -30,7 +30,7 @@ REGLAS CRÍTICAS:
 1. Para montos: extrae SOLO el número, sin "Bs.", sin "$", sin comas de miles. Usa punto decimal.
 2. Para fechas: siempre en formato DD/MM/AAAA.
 3. Para RIF: incluye el guión y dígito verificador (ej: J-12345678-0).
-4. Para números de factura/control: solo dígitos (limpia letras y guiones).
+4. Para nroFactura: solo dígitos (limpia letras y guiones). Para nroControl: conserva letras Y dígitos tal cual aparecen (ej: ZZP0023685, AA12345678). NO elimines las letras del número de control.
 5. Si el documento tiene múltiples registros (ej: reporte Z con varias líneas), extrae el PRIMER registro visible.
 6. El IVA en Venezuela es 16%. Si ves el total y la base, verifica que total ≈ base * 1.16.
 7. Responde SOLO con el JSON, sin texto adicional, sin markdown, sin bloques de código.`
