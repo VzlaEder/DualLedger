@@ -34,8 +34,11 @@
 
         <div class="queue-list">
           <div v-for="(item, index) in queue" :key="index" class="queue-item">
-            <img v-if="!item.isPdf" :src="item.previewUrl" class="queue-thumb" />
-            <div v-else class="queue-thumb pdf-thumb">PDF</div>
+            <div class="queue-thumb-wrap" @click.stop="openPreview(item)">
+              <img v-if="item.previewUrl" :src="item.previewUrl" class="queue-thumb" :alt="item.file.name" />
+              <div v-else class="queue-thumb pdf-thumb">PDF</div>
+              <span v-if="item.isPdf && item.pages" class="thumb-badge">{{ item.pages }}</span>
+            </div>
             <div class="queue-info">
               <p class="queue-name">{{ item.file.name }}</p>
               <div class="queue-meta">
@@ -94,10 +97,26 @@
         <span class="chip">Libro de Compras</span>
       </div>
     </div>
+
+    <div v-if="previewItem" class="preview-modal" @click="closePreview">
+      <div class="preview-modal-inner" @click.stop>
+        <button class="preview-close" @click="closePreview" title="Cerrar">&#10005;</button>
+        <iframe
+          v-if="previewItem.isPdf"
+          :src="previewItem.pdfUrl"
+          class="preview-frame"
+          title="Vista previa del PDF"
+        ></iframe>
+        <img v-else :src="previewItem.previewUrl" class="preview-media" :alt="previewItem.file.name" />
+        <p class="preview-name">{{ previewItem.file.name }}</p>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
+import { renderPdfThumbnail } from '../utils/ocr.js'
+
 export default {
   name: 'ImageUploader',
   emits: ['process-start'],
@@ -106,7 +125,8 @@ export default {
       queue: [],
       isDragOver: false,
       processing: false,
-      processedCount: 0
+      processedCount: 0,
+      previewItem: null
     }
   },
   computed: {
@@ -147,13 +167,48 @@ export default {
         alert(`${file.name} es demasiado grande. Máximo ${isPdf ? '25MB' : '10MB'}.`)
         return
       }
-      this.queue.push({
+      const item = {
         file,
         previewUrl: isPdf ? '' : URL.createObjectURL(file),
         isPdf,
+        pdfUrl: isPdf ? URL.createObjectURL(file) : '',
+        pages: null,
+        thumbLoading: isPdf,
         status: 'pending',
         handwritten: false
-      })
+      }
+      this.queue.push(item)
+      if (isPdf) this.loadPdfThumb(item)
+    },
+
+    async loadPdfThumb(item) {
+      try {
+        const { url, numPages } = await renderPdfThumbnail(item.file)
+        if (!this.queue.includes(item)) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        item.previewUrl = url
+        item.pages = numPages
+      } catch (e) {
+        console.warn('[PDF] No se pudo generar la miniatura:', e)
+      } finally {
+        item.thumbLoading = false
+      }
+    },
+
+    openPreview(item) {
+      this.previewItem = item
+    },
+
+    closePreview() {
+      this.previewItem = null
+    },
+
+    revokeItem(item) {
+      if (!item) return
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      if (item.pdfUrl) URL.revokeObjectURL(item.pdfUrl)
     },
 
     toggleHandwritten(item) {
@@ -161,12 +216,15 @@ export default {
     },
 
     removeFromQueue(index) {
-      if (this.queue[index].previewUrl) URL.revokeObjectURL(this.queue[index].previewUrl)
+      const item = this.queue[index]
+      if (this.previewItem === item) this.previewItem = null
+      this.revokeItem(item)
       this.queue.splice(index, 1)
     },
 
     clearQueue() {
-      this.queue.forEach(i => { if (i.previewUrl) URL.revokeObjectURL(i.previewUrl) })
+      this.previewItem = null
+      this.queue.forEach(i => this.revokeItem(i))
       this.queue = []
     },
 
@@ -201,7 +259,7 @@ export default {
   },
 
   beforeUnmount() {
-    this.queue.forEach(i => { if (i.previewUrl) URL.revokeObjectURL(i.previewUrl) })
+    this.queue.forEach(i => this.revokeItem(i))
   }
 }
 </script>
@@ -276,12 +334,20 @@ export default {
   border-radius: 8px;
 }
 
-.queue-thumb {
+.queue-thumb-wrap {
+  position: relative;
   width: 44px;
   height: 44px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.queue-thumb {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   border-radius: 6px;
-  flex-shrink: 0;
+  display: block;
 }
 
 .pdf-thumb {
@@ -293,6 +359,86 @@ export default {
   font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.5px;
+}
+
+.thumb-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: white;
+  font-size: 0.62rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--surface);
+  box-sizing: content-box;
+}
+
+.preview-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.preview-modal-inner {
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 12px;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(var(--error-rgb), 0.12);
+  color: var(--error);
+  font-size: 0.9rem;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.preview-frame,
+.preview-media {
+  max-width: 86vw;
+  max-height: 78vh;
+  width: 86vw;
+  height: 78vh;
+  border: none;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.preview-media {
+  width: auto;
+  height: auto;
+}
+
+.preview-name {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  text-align: center;
+  word-break: break-word;
 }
 
 .queue-info { flex: 1; min-width: 0; }

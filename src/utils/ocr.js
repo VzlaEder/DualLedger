@@ -4,6 +4,58 @@ import { parseReportData } from './parse'
 import { recognizeWithGemini } from './gemini'
 import { hasApiKey } from './apiKey'
 
+let pdfjsLibPromise = null
+
+async function loadPdfjs() {
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = (async () => {
+      const lib = await import('pdfjs-dist')
+      const workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
+      lib.GlobalWorkerOptions.workerSrc = workerSrc
+      return lib
+    })()
+  }
+  return pdfjsLibPromise
+}
+
+async function loadPdfDocument(file) {
+  const { getDocument } = await loadPdfjs()
+  const data = await file.arrayBuffer()
+  return getDocument({ data }).promise
+}
+
+async function renderPdfPageToBlob(page, { maxWidth = null, scale = 2, type = 'image/png', quality = 0.9 } = {}) {
+  const base = page.getViewport({ scale: 1 })
+  const usedScale = maxWidth ? Math.min(4, maxWidth / base.width) : scale
+  const viewport = page.getViewport({ scale: usedScale })
+
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.ceil(viewport.width))
+  canvas.height = Math.max(1, Math.ceil(viewport.height))
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  await page.render({ canvasContext: ctx, viewport }).promise
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob)
+      else reject(new Error('No se pudo renderizar una página del PDF'))
+    }, type, quality)
+  })
+}
+
+export async function renderPdfThumbnail(file, maxWidth = 160) {
+  const pdf = await loadPdfDocument(file)
+  try {
+    const page = await pdf.getPage(1)
+    const blob = await renderPdfPageToBlob(page, { maxWidth, type: 'image/jpeg', quality: 0.8 })
+    return { url: URL.createObjectURL(blob), numPages: pdf.numPages }
+  } finally {
+    try { pdf.destroy() } catch (e) { /* noop */ }
+  }
+}
+
 export async function expandFile(file) {
   const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')
   if (!isPdf) return [{ blob: file, name: file.name || 'Imagen' }]
@@ -11,27 +63,17 @@ export async function expandFile(file) {
 }
 
 async function renderPdfPages(file) {
-  const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
-  const workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
-  GlobalWorkerOptions.workerSrc = workerSrc
-
-  const data = await file.arrayBuffer()
-  const pdf = await getDocument({ data }).promise
+  const pdf = await loadPdfDocument(file)
   const pages = []
 
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i)
-    const viewport = page.getViewport({ scale: 2 })
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.ceil(viewport.width)
-    canvas.height = Math.ceil(viewport.height)
-    const ctx = canvas.getContext('2d')
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    await page.render({ canvasContext: ctx, viewport }).promise
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
-    if (!blob) throw new Error('No se pudo renderizar una página del PDF')
-    pages.push({ blob, name: `${file.name || 'PDF'} (pág. ${i})` })
+  try {
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i)
+      const blob = await renderPdfPageToBlob(page, { scale: 2 })
+      pages.push({ blob, name: `${file.name || 'PDF'} (pág. ${i})` })
+    }
+  } finally {
+    try { pdf.destroy() } catch (e) { /* noop */ }
   }
 
   return pages
