@@ -32,6 +32,10 @@ function isErrorMessageLike(value) {
   return ERROR_NAME_PATTERN.test(String(value || ''))
 }
 
+function isNotFoundLike(value) {
+  return /no\s+existe|no\s+se\s+encontr/i.test(String(value || ''))
+}
+
 function readCache(rif) {
   try {
     const raw = localStorage.getItem(CACHE_PREFIX + rif)
@@ -126,7 +130,7 @@ export async function verificarRifEnSeniat(rif, { forceRefresh = false, signal, 
   if (!forceRefresh) {
     const local = readCache(normalized)
     if (local && (local.nombreRazon || local.porcentajeContribucion != null)) {
-      if (isErrorMessageLike(local.nombreRazon)) {
+      if (isErrorMessageLike(local.nombreRazon) || isNotFoundLike(local.nombreRazon)) {
         writeCache(normalized, {})
       } else {
         return local
@@ -134,7 +138,7 @@ export async function verificarRifEnSeniat(rif, { forceRefresh = false, signal, 
     }
 
     const shared = await lookupSharedCache(normalized, signal)
-    if (shared && !isErrorMessageLike(shared.nombreRazon)) {
+    if (shared && !isErrorMessageLike(shared.nombreRazon) && !isNotFoundLike(shared.nombreRazon)) {
       writeCache(normalized, shared)
       return shared
     }
@@ -211,8 +215,14 @@ export async function verificarRifEnSeniat(rif, { forceRefresh = false, signal, 
         await delay(ATTEMPT_DELAY_MS, signal)
         continue
       }
+      if (isNotFoundLike(verify.nombreRazon)) {
+        throw new Error('El RIF no existe en el SENIAT')
+      }
       writeCache(normalized, { ...data, fromCache: false })
       return { ...data, fromCache: false }
+    }
+    if (verify.notFound) {
+      throw new Error('El RIF no existe en el SENIAT')
     }
     if (verify.captchaError) {
       lastErr = new Error('El captcha fue rechazado por el SENIAT')

@@ -93,6 +93,10 @@ function isErrorMessageLike(value) {
   return /no\s+coincide|el\s+c[dó]digo|la\s+imagen|rechazad|no\s+es\s+correcto/i.test(String(value || ''))
 }
 
+function isNotFoundLike(value) {
+  return /no\s+existe|no\s+se\s+encontr/i.test(String(value || ''))
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
   return fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) })
 }
@@ -208,7 +212,7 @@ router.post('/lookup', async (req, res) => {
   if (!rif) return res.status(400).json({ ok: false, error: 'Falta rif' })
 
   const cached = await lookupCache(rif)
-  if (cached) {
+  if (cached && !isNotFoundLike(cached.nombreRazon)) {
     return res.json({ ...cached, ok: true, hit: true, fromCache: true })
   }
   res.json({ ok: false, hit: false })
@@ -268,6 +272,10 @@ router.post('/verify', async (req, res) => {
       nombreRazon: name || '',
       porcentajeContribucion: pct,
       condicion: condicion || ''
+    }
+
+    if (isNotFoundLike(data.nombreRazon)) {
+      return res.json({ ok: false, notFound: true, rif })
     }
 
     if (isErrorMessageLike(data.nombreRazon)) {

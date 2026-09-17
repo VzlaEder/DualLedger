@@ -305,6 +305,11 @@ export default {
     records: {
       handler() { this.autoLookupAll() },
       deep: true
+    },
+    'editForm.rif'(value, oldValue) {
+      if (this.editingIndex < 0) return
+      if (this.normalizeRif(value) === this.normalizeRif(oldValue)) return
+      this.seniatError = { ...this.seniatError, [this.editingIndex]: '' }
     }
   },
   computed: {
@@ -342,15 +347,24 @@ export default {
       this.autoLookupPending.add(rif)
       try {
         const cached = await lookupSharedCache(rif)
-        if (cached && cached.ok && cached.hit) {
-          const updated = {
-            ...record,
-            nombreRazon: cached.nombreRazon || record.nombreRazon,
-            porcentajeContribucion: cached.porcentajeContribucion,
-            condicion: cached.condicion || record.condicion
-          }
-          this.$emit('update-record', index, updated)
-        }
+        if (!cached || !cached.ok || !cached.hit) return
+        const current = this.records[index]
+        if (!current || this.normalizeRif(current.rif) !== rif) return
+        const nombreRazon = cached.nombreRazon || current.nombreRazon
+        const porcentajeContribucion = cached.porcentajeContribucion
+        const condicion = cached.condicion || current.condicion
+        if (
+          nombreRazon === current.nombreRazon &&
+          porcentajeContribucion === current.porcentajeContribucion &&
+          condicion === current.condicion
+        ) return
+        this.seniatError = { ...this.seniatError, [index]: '' }
+        this.$emit('update-record', index, {
+          ...current,
+          nombreRazon,
+          porcentajeContribucion,
+          condicion
+        })
       } catch (e) {
         // Silencioso
       } finally {
@@ -389,13 +403,14 @@ export default {
           signal: controller.signal,
           onCaptchaNeeded: (captcha) => this.requestManualCaptcha(controller.signal, captcha)
         })
-        const updated = {
-          ...record,
-          nombreRazon: res.nombreRazon || record.nombreRazon,
+        const current = this.records[index]
+        if (!current || this.normalizeRif(current.rif) !== rif) return
+        this.$emit('update-record', index, {
+          ...current,
+          nombreRazon: res.nombreRazon || current.nombreRazon,
           porcentajeContribucion: res.porcentajeContribucion,
-          condicion: res.condicion || record.condicion
-        }
-        this.$emit('update-record', index, updated)
+          condicion: res.condicion || current.condicion
+        })
       } catch (e) {
         if (e && (e.name === 'AbortError' || (e && e.message && e.message === 'Verificación cancelada'))) {
           this.seniatError = {
@@ -465,7 +480,15 @@ export default {
 
     toggleEdit(index) {
       if (this.editingIndex === index) {
-        this.$emit('update-record', index, { ...this.editForm })
+        const original = this.records[index] || {}
+        const updated = { ...this.editForm }
+        if (this.normalizeRif(updated.rif) !== this.normalizeRif(original.rif)) {
+          updated.nombreRazon = ''
+          updated.porcentajeContribucion = null
+          updated.condicion = ''
+          this.seniatError = { ...this.seniatError, [index]: '' }
+        }
+        this.$emit('update-record', index, updated)
         this.editingIndex = -1
       } else {
         this.editForm = { ...this.records[index] }
