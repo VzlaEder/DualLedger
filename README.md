@@ -1,43 +1,77 @@
-# DualLedger - Image Info PWA
+<div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![PWA](https://img.shields.io/badge/PWA-Ready-green)
-![Vue](https://img.shields.io/badge/Vue-3.4+-brightgreen)
-![License](https://img.shields.io/badge/License-MIT-yellow)
+# 📗 DualLedger
+
+**Libro de Compras — Extractor de Datos Fiscales**
+
+![Versión](https://img.shields.io/badge/versi%C3%B3n-1.0.0-1a56db?style=for-the-badge)
+![PWA](https://img.shields.io/badge/PWA-offline--first-16a34a?style=for-the-badge)
+![Vue](https://img.shields.io/badge/Vue-3.4%2B-42b883?style=for-the-badge&logo=vuedotjs&logoColor=white)
+![PDF](https://img.shields.io/badge/PDF-soportado-dc2626?style=for-the-badge&logo=adobeacrobatreader&logoColor=white)
+![SENIAT](https://img.shields.io/badge/SENIAT-verificaci%C3%B3n-1a56db?style=for-the-badge)
+![Licencia](https://img.shields.io/badge/licencia-MIT-f59e0b?style=for-the-badge)
+
+</div>
 
 ---
 
-## Descripción
+## 📑 Tabla de contenidos
+
+- [Descripción](#descripción)
+- [Instalación](#instalación--installation)
+- [Uso](#uso--usage)
+  - [Verificación de RIF en el SENIAT](#verificación-de-rif-en-el-seniat-opcional)
+  - [Avisos, sonido y confirmaciones](#avisos-sonido-y-confirmaciones)
+- [Arquitectura](#arquitectura--architecture)
+- [Configuración de Gemini](#configuración-de-gemini--gemini-ai-setup)
+- [Tecnologías](#tecnologías--tech-stack)
+- [Estructura del Proyecto](#estructura-del-proyecto--project-structure)
+- [Scripts](#scripts)
+- [Contribuir](#contribuir--contributing)
+- [Licencia](#licencia--license)
+- [Changelog](#changelog)
+
+---
+
+## 🧭 Descripción
 
 **DualLedger** es una Progressive Web Application (PWA) diseñada para empresas venezolanas que necesitan digitalizar y procesar documentos fiscales de compra. La aplicación extrae datos de imágenes de facturas, notas de crédito, notas de débito y reportes Z utilizando tecnología OCR e inteligencia artificial, y genera un archivo Excel en formato "Libro de Compras" listo para declaration fiscal.
 
 ### Características Principales
 
+- **Entrada de Imágenes y PDF:** Acepta fotos (JPG/PNG) y archivos **PDF**; cada página del PDF se procesa como una factura independiente, con miniatura y previsualización.
 - **OCR Dual:** Gemini AI (nube, mayor precisión) con fallback automático a Tesseract.js (local, gratuito)
 - **Documentos Impresos y Manuscritos:** Soporte completo con puntuación de confianza por campo
+- **Tipos de Documento:** Facturas, **notas de crédito**, **notas de débito** y reportes Z, con factura afectada y manejo de signos.
+- **Verificación SENIAT:** Consulta del RIF contra el portal público del SENIAT (razón social, % de contribución y condición), con captcha manual y caché compartida en Supabase.
 - **PWA Offline-First:** Funciona sin conexión después de la carga inicial
 - **Exportación Excel:** Genera archivos .xlsx en formato Libro de Compras venezolano
 - **Historial de Exportaciones:** Registro persistente en IndexedDB
+- **Experiencia Cuidada:** Modales y avisos flotantes con el diseño de la app, además de un **aviso sonoro** (silenciable) al terminar el procesamiento.
 - **Interfaz en Español:** Diseñada específicamente para el mercado venezolano
 
 ---
 
-## Description
+## 🧭 Description
 
 **DualLedger** is a Progressive Web Application (PWA) designed for Venezuelan businesses that need to digitize and process purchase fiscal documents. The application extracts data from images of invoices, credit notes, debit notes, and Z-reports using OCR technology and artificial intelligence, generating an Excel file in "Libro de Compras" (Purchase Ledger) format ready for tax declaration.
 
 ### Key Features
 
+- **Images and PDF Input:** Accepts photos (JPG/PNG) and **PDF** files; each PDF page is processed as an independent invoice, with thumbnail and preview.
 - **Dual OCR:** Gemini AI (cloud, higher accuracy) with automatic fallback to Tesseract.js (local, free)
 - **Printed and Handwritten Documents:** Full support with per-field confidence scoring
+- **Document Types:** Invoices, **credit notes**, **debit notes** and Z-reports, with affected invoice and sign handling.
+- **SENIAT Verification:** RIF lookup against the SENIAT public portal (company name, contribution %, condition), with manual captcha and shared Supabase cache.
 - **Offline-First PWA:** Works without connection after initial load
 - **Excel Export:** Generates .xlsx files in Venezuelan Purchase Ledger format
 - **Export History:** Persistent record storage in IndexedDB
+- **Polished UX:** In-app modals and floating toasts, plus a mutable completion sound.
 - **Spanish Interface:** Designed specifically for the Venezuelan market
 
 ---
 
-## Instalación | Installation
+## ⚙️ Instalación | Installation
 
 ### Prerrequisitos | Prerequisites
 
@@ -64,7 +98,7 @@ La aplicación estará disponible en `http://localhost:3000`
 
 ---
 
-## Uso | Usage
+## 🚀 Uso | Usage
 
 ### Configuración Inicial
 
@@ -81,8 +115,48 @@ La aplicación estará disponible en `http://localhost:3000`
 
 ### Verificación de RIF en el SENIAT (opcional)
 
-Para rellenar automáticamente el nombre real (razón social) y el % de contribución de cada
-RIF, la app usa un **Cloudflare Worker** que consulta el portal público del SENIAT.
+Para rellenar automáticamente el nombre real (razón social), el % de contribución y la condición de
+cada RIF, la app consulta el portal público del SENIAT. Hay **dos modos**:
+
+| Modo | Cuándo | Backend |
+| --- | --- | --- |
+| **Proxy local** | Desarrollo (`npm run dev`) | `server/index.js` (Express) montado como middleware de Vite en `/api`, con caché en **Supabase** |
+| **Cloudflare Worker** | Producción | Worker `dual-ledger-seniat` con KV `RIF_CACHE` (ver más abajo) |
+
+#### Modo desarrollo: proxy local + Supabase
+
+El servidor Express (`server/index.js`) se integra en el servidor de desarrollo de Vite mediante el
+plugin `seniatProxy`, por lo que el cliente llama a `/api` sin necesidad de configurar una URL.
+
+1. Instala las dependencias del servidor:
+
+   ```bash
+   cd server
+   npm install
+   ```
+
+2. Crea el archivo `.env` en la raíz con las credenciales de Supabase (usa `.env.example` como guía):
+
+   ```env
+   VITE_SENIAT_WORKER_URL=        # Vacío en desarrollo: se usa /api
+   SUPABASE_URL=https://<proyecto>.supabase.co
+   SUPABASE_ANON_KEY=<anon-key>
+   PORT=8787                      # Opcional (por defecto 8787)
+   ```
+
+3. Ejecuta `server/schema.sql` en el SQL Editor de Supabase para crear la tabla `rif_cache`.
+
+4. Inicia la app con `npm run dev`. El cliente usará el proxy local automáticamente.
+
+> [!NOTE]
+> El RIF se normaliza sin guiones (por ejemplo, `J-508125843` → `J508125843`). Los RIF que **no
+> existen** no se cachean.
+
+#### Modo producción: Cloudflare Worker
+
+> El Worker se ofrece como alternativa de despliegue. La URL puede configurarse por variable de
+> entorno (`VITE_SENIAT_WORKER_URL`) o desde la UI (botón ⚙). Además, el RIF normalizado sin
+> guiones se usa como clave de caché.
 
 **Despliegue inicial (una sola vez, por terminal):**
 
@@ -107,15 +181,17 @@ Cuando termine, copia la URL `https://...workers.dev` que imprime wrangler.
 A partir de ahí, el botón ⚙ puede re-desplegar el Worker automáticamente (la PWA envía
 el código al Worker y este se actualiza a sí mismo vía la API de Cloudflare).
 
-Nota: La API de Cloudflare **no permite** llamadas directas desde el navegador (CORS),
-por eso el despliegue inicial se hace por terminal una única vez.
+> [!WARNING]
+> La API de Cloudflare **no permite** llamadas directas desde el navegador (CORS), por eso el
+> despliegue inicial se hace por terminal una única vez.
 
 ### Flujo de Trabajo
 
-1. **Subir Imágenes:**
-   - Arrastra y suelta imágenes en la zona de carga
+1. **Subir Imágenes o PDF:**
+   - Arrastra y suelta archivos en la zona de carga
    - O haz clic para seleccionar archivos
-   - Máximo 10MB por imagen (JPG/PNG)
+   - Máximo 10MB por imagen (JPG/PNG) y 25MB por PDF
+   - Los PDF muestran una miniatura con el número de páginas y se pueden previsualizar
    - Marca con el ícono ✏️ los documentos manuscritos
 
 2. **Procesar Documentos:**
@@ -139,48 +215,62 @@ por eso el despliegue inicial se hace por terminal una única vez.
    - En la pestaña "Historial" verás todas las exportaciones anteriores
    - Puedes eliminar registros individuales o todo el historial
 
+### Avisos, sonido y confirmaciones
+
+- Las acciones muestran **avisos flotantes** ("Registro actualizado", "RIF verificado", "Registro
+  eliminado", etc.) que se cierran solos a los 2,3 s o con la ✕.
+- Al terminar el procesamiento suena un **tono suave**; si algo falla, el aviso sale **en rojo**
+  ("El procesamiento falló") con un tono descendente.
+- El sonido se puede **silenciar** con el botón 🔊/🔇 del encabezado (se recuerda la preferencia).
+- Las confirmaciones destructivas se muestran en un modal propio con botón rojo y **no se cierran al
+  hacer clic fuera**.
+
 ---
 
-## Arquitectura | Architecture
+## 🏗️ Arquitectura | Architecture
 
 ### Flujo de Datos
 
 ```
-┌─────────────────┐
-│  Subida de      │
-│  Imágenes       │
-└────────┬────────┘
+┌──────────────────┐
+│  Subida de       │
+│  Imágenes / PDF  │
+└────────┬─────────┘
          │
          v
-┌─────────────────┐
-│  Pipeline OCR   │
-│  (Gemini/Tess)  │
-└────────┬────────┘
+┌──────────────────┐
+│  Pipeline OCR    │
+│  (Gemini/Tess)   │
+└────────┬─────────┘
          │
          v
-┌─────────────────┐
-│  Parser Regex   │
-│  (Extracción)   │
-└────────┬────────┘
+┌──────────────────┐
+│  Parser Regex    │
+│  (Extracción)    │
+└────────┬─────────┘
          │
          v
-┌─────────────────┐
-│  Vista/Edición  │
-│  (DataPreview)  │
-└────────┬────────┘
+┌──────────────────┐      ┌────────────────────┐
+│  Vista/Edición   │ ───> │  Verificación      │
+│  (DataPreview)   │      │  SENIAT (opcional) │
+└────────┬─────────┘      └────────────────────┘
          │
          v
-┌─────────────────┐
-│  Exportación    │
-│  Excel (XLSX)   │
-└────────┬────────┘
+┌──────────────────┐
+│  Exportación     │
+│  Excel (XLSX)    │
+└────────┬─────────┘
          │
          v
-┌─────────────────┐
-│  Historial      │
-│  (IndexedDB)    │
-└─────────────────┘
+┌──────────────────┐
+│  Historial       │
+│  (IndexedDB)     │
+└──────────────────┘
 ```
+
+La verificación SENIAT consulta la razón social, el % de contribución y la condición del RIF a
+través del proxy local (`/api`) o de un Cloudflare Worker, y guarda el resultado en caché
+(Supabase o KV).
 
 ### Pipeline de OCR
 
@@ -216,36 +306,44 @@ por eso el despliegue inicial se hace por terminal una única vez.
 
 ### Modelo de Datos
 
-Cada registro contiene 26 campos:
+Cada registro contiene 28 campos base (más `condicion` y `confidencias` según el caso):
 
 | Campo | Descripción |
 |-------|-------------|
 | `nro` | Número secuencial |
+| `tipoDocumento` | `factura`, `nota_credito`, `nota_debito` o `reporte_z` |
 | `fecha` | Fecha (DD/MM/AAAA) |
 | `rif` | RIF del proveedor |
-| `nombreRazon` | Razón social |
+| `nombreRazon` | Razón social (se completa con el SENIAT si está configurado) |
+| `porcentajeContribucion` | % de contribución devuelto por el SENIAT |
+| `condicion` | Condición del contribuyente (SENIAT) |
 | `nroFactura` | Número de factura |
 | `nroControl` | Número de control |
+| `numeroMaquinaFiscal` | Serial de la máquina fiscal |
 | `nroNotaDebito` | Número nota de débito |
 | `nroNotaCredito` | Número nota de crédito |
 | `tipoTransaccion` | "01 -Reg" o "02 - Affect" |
+| `nroFacturaAfectada` | Número de factura afectada (notas) |
 | `totalComprasIVA` | Total incluyendo IVA |
+| `noGravadas` | Compras no gravadas |
 | `baseNacional` | Base imponible nacional |
 | `alicuotaNac` | Alícuota nacional (16%) |
 | `creditoFiscalNac` | Crédito fiscal nacional |
 | `baseImportacion` | Base imponible importación |
 | `alicuotaImp` | Alícuota importación (16%) |
 | `creditoFiscalImp` | Crédito fiscal importación |
-| `retIVA` | Retención de IVA |
-| `igtf` | IGTF (3%) |
 | `numExpediente` | Número expediente importación |
 | `numPlanilla` | Número planilla importación |
 | `fechaPlanilla` | Fecha planilla importación |
+| `retIVA` | Retención de IVA |
+| `comprobanteIVA` | Número de comprobante de retención de IVA |
+| `fechaIVA` | Fecha del comprobante de retención de IVA |
+| `igtf` | IGTF (3%) |
 | `confidencias` | Mapa de confianza por campo (manuscritos) |
 
 ---
 
-## Configuración de Gemini | Gemini AI Setup
+## 🤖 Configuración de Gemini | Gemini AI Setup
 
 ### Obtener API Key
 
@@ -262,29 +360,33 @@ Cada registro contiene 26 campos:
 ### Limitaciones
 
 - **Rate Limits:** Google aplica límites de solicitudes por minuto
-- **Modelo:** Utiliza `gemini-3.1-flash-lite` (gratuito)
-- **Tamaño Máximo:** 10MB por imagen
+- **Modelo:** Utiliza `gemini-3.5-flash-lite` (gratuito)
+- **Tamaño Máximo:** 10MB por imagen (25MB por PDF)
 - **Tokens:** Máximo 1024 tokens de respuesta
 
 ### Sin API Key
 
 Si no configurás una API Key:
-- La aplicación usará Tesseract.js local
-- No requiere conexión a internet
-- Precisión menor en documentos manuscritos
-- Procesamiento más lento
+
+> [!TIP]
+> La aplicación usará **Tesseract.js** local: no requiere conexión a internet, pero tiene menor
+> precisión en documentos manuscritos y un procesamiento más lento.
 
 ---
 
-## Tecnologías | Tech Stack
+## 🧰 Tecnologías | Tech Stack
 
 | Tecnología | Versión | Uso |
 |------------|---------|-----|
 | **Vue.js** | ^3.4.0 | Framework UI reactivo |
 | **Vite** | ^5.4.0 | Build tool y servidor de desarrollo |
 | **Tesseract.js** | ^5.1.0 | Motor OCR local |
+| **pdfjs-dist** | ^6.3.289 | Renderizado de archivos PDF |
 | **SheetJS (xlsx)** | ^0.18.5 | Generación de archivos Excel |
+| **idb** | ^8.0.0 | Envoltorio de IndexedDB para el historial |
 | **Workbox** | ^7.0.0 | Service worker para PWA |
+| **Express** | ^4.21.0 | Proxy local SENIAT (`server/`) |
+| **Supabase JS** | ^2.45.0 | Caché compartida de RIF (`rif_cache`) |
 | **IndexedDB** | Nativo | Persistencia local de datos |
 
 ### Dependencias de Desarrollo
@@ -293,62 +395,94 @@ Si no configurás una API Key:
 |---------|---------|-----------|
 | `@vitejs/plugin-vue` | ^5.0.0 | Plugin Vite para Vue 3 |
 | `vite-plugin-pwa` | ^0.20.0 | Soporte PWA para Vite |
+| `workbox-window` | ^7.0.0 | Registro del service worker |
+| `@resvg/resvg-js` | ^2.6.2 | Generación del logotipo (`scripts/`)|
 
 ---
 
-## Estructura del Proyecto | Project Structure
+## 🗂️ Estructura del Proyecto | Project Structure
 
 ```
 DualLedger/
-├── public/                    # Assets estáticos
+├── public/                     # Assets estáticos
 │   ├── favicon.ico
-│   ├── icon-192.png           # Icono PWA 192x192
-│   ├── icon-512.png           # Icono PWA 512x512
-│   └── index.html             # HTML entry point (versión anterior)
+│   ├── icon-192.png            # Icono PWA 192x192
+│   ├── icon-512.png            # Icono PWA 512x512
+│   └── index.html              # HTML entry point (versión anterior)
+│
+├── server/                     # Proxy local SENIAT (Express + Supabase)
+│   ├── index.js                # Endpoints /lookup, /verify, /captcha
+│   ├── schema.sql              # Esquema de la tabla rif_cache
+│   └── package.json
+│
+├── worker/                     # Cloudflare Worker SENIAT (alternativa de producción)
+│   └── src/index.js
+│
+├── scripts/
+│   └── generate-logo.mjs       # Generación del logotipo
 │
 ├── src/
-│   ├── main.js                # Bootstrap de Vue
-│   ├── App.vue                # Componente raíz (orquestador)
+│   ├── main.js                 # Bootstrap de Vue
+│   ├── App.vue                 # Componente raíz (orquestador)
 │   │
-│   ├── components/            # Componentes Vue
-│   │   ├── ApiKeySetup.vue    # Configuración API key Gemini
-│   │   ├── DataPreview.vue    # Vista/edición de registros
-│   │   ├── ExcelExport.vue    # Exportación a Excel
-│   │   ├── History.vue        # Historial de exportaciones
-│   │   └── ImageUploader.vue  # Subida de imágenes (drag & drop)
+│   ├── components/             # Componentes Vue
+│   │   ├── ApiKeySetup.vue     # Configuración API key Gemini
+│   │   ├── CaptchaModal.vue    # Entrada manual del captcha SENIAT
+│   │   ├── DataPreview.vue     # Vista/edición de registros
+│   │   ├── DialogHost.vue      # Modales de alerta/confirmación
+│   │   ├── ExcelExport.vue     # Exportación a Excel
+│   │   ├── History.vue         # Historial de exportaciones
+│   │   ├── ImageUploader.vue   # Subida de imágenes y PDF (drag & drop)
+│   │   ├── SeniatSetup.vue     # Configuración del servicio SENIAT
+│   │   └── ToastHost.vue       # Avisos flotantes (toasts)
 │   │
-│   ├── stores/                # Gestión de estado
-│   │   ├── db.js              # CRUD IndexedDB (historial)
-│   │   └── theme.js           # Proveedor de temas (no usado)
+│   ├── stores/                 # Gestión de estado
+│   │   ├── db.js               # CRUD IndexedDB (historial)
+│   │   └── theme.js            # Proveedor de temas (no usado)
 │   │
-│   └── utils/                 # Lógica de negocio
-│       ├── apiKey.js          # Almacenamiento API key (localStorage)
-│       ├── deslash.js         # Preprocesamiento imagen (conectados componentes)
-│       ├── excelTemplate.js   # Plantilla Excel (SheetJS)
-│       ├── gemini.js          # Integración Google Gemini AI
-│       ├── ocr.js             # Orquestador OCR principal
-│       ├── parse.js           # Parser regex (extracción campos)
-│       └── prompts.js         # Prompts para Gemini AI
+│   └── utils/                  # Lógica de negocio
+│       ├── apiKey.js           # Almacenamiento API key (localStorage)
+│       ├── cloudflare.js       # API de Cloudflare (despliegue del Worker)
+│       ├── deslash.js          # Preprocesamiento de imagen
+│       ├── dialog.js           # Cola de diálogos y toasts
+│       ├── excelTemplate.js    # Plantilla Excel (SheetJS)
+│       ├── gemini.js           # Integración Google Gemini AI
+│       ├── ocr.js              # Orquestador OCR + PDF
+│       ├── parse.js            # Parser regex (extracción de campos)
+│       ├── prompts.js          # Prompts para Gemini AI
+│       ├── seniat.js           # Verificación de RIF en el SENIAT
+│       ├── settings.js         # Configuración (Worker URL, credenciales)
+│       └── sound.js            # Sonidos sintetizados (Web Audio)
 │
-├── index.html                 # Entry point HTML (Vite)
-├── package.json               # Configuración npm
-├── vite.config.js             # Configuración Vite + PWA
-└── README.md                  # Este archivo
+├── index.html                  # Entry point HTML (Vite)
+├── package.json                # Configuración npm
+├── vite.config.js              # Configuración Vite + PWA
+├── CHANGELOG.md                # Historial de cambios
+├── MIGRACION.md                # Guía de migración del Worker SENIAT
+├── README.md                   # Este archivo
+└── .env.example                # Variables de entorno de ejemplo
 ```
 
 ---
 
-## Scripts
+## 📜 Scripts
 
 | Comando | Descripción |
 |---------|-------------|
-| `npm run dev` | Inicia servidor de desarrollo en `localhost:3000` |
+| `npm run dev` | Inicia servidor de desarrollo en `localhost:3000` (incluye el proxy SENIAT en `/api`) |
 | `npm run build` | Genera build de producción en `dist/` |
 | `npm run preview` | Vista previa del build de producción |
 
+### Scripts del servidor (`server/`)
+
+| Comando | Descripción |
+|---------|-------------|
+| `npm start` | Inicia el proxy SENIAT de forma independiente |
+| `npm run dev` | Proxy SENIAT con recarga automática (`node --watch`) |
+
 ---
 
-## Contribuir | Contributing
+## 🤝 Contribuir | Contributing
 
 ### Guías Básicas
 
@@ -375,20 +509,25 @@ DualLedger/
 ### Testing
 
 Actualmente no hay tests automatizados. El testing es manual:
-1. Ejecutar `npm run dev`
-2. Probar flujo completo: subir → procesar → editar → exportar
-3. Verificar en diferentes navegadores
-4. Probar modo offline (PWA)
+
+1. Ejecutar `npm run dev`.
+2. Probar el flujo completo: subir → procesar → editar → exportar.
+3. Subir una imagen y un **PDF** (verificar miniatura, número de páginas y previsualización).
+4. Verificar los **avisos flotantes**, los modales (que no cierren al hacer clic fuera) y el
+   **sonido** (activar/silenciar).
+5. Verificar la **edición de RIF** y la verificación SENIAT (incluido el captcha manual).
+6. Probar el resultado del procesamiento con archivos válidos e inválidos.
+7. Verificar en diferentes navegadores y probar el modo **offline** (PWA).
 
 ---
 
-## Licencia | License
+## 📄 Licencia | License
 
 MIT License - Ver archivo [LICENSE](LICENSE) para detalles.
 
 ---
 
-## Créditos | Credits
+## 🙌 Créditos | Credits
 
 ### Desarrollado por
 
@@ -403,7 +542,7 @@ MIT License - Ver archivo [LICENSE](LICENSE) para detalles.
 
 ---
 
-## Soporte | Support
+## 💬 Soporte | Support
 
 Para problemas o preguntas:
 - Abrir un [GitHub Issue](../../issues)
@@ -412,7 +551,15 @@ Para problemas o preguntas:
 
 ---
 
-## Changelog
+## 📗 Changelog
+
+El historial completo y detallado de cambios está en **[CHANGELOG.md](CHANGELOG.md)**.
+
+### Sin publicar
+- ✅ Entrada y procesamiento de **PDF** (cada página como factura)
+- ✅ Modales y **avisos flotantes** propios
+- ✅ **Aviso sonoro** silenciable al terminar el procesamiento
+- ✅ Manejo de **notas de crédito/débito**
 
 ### v1.0.0 (2024)
 - ✅ Implementación inicial
@@ -424,4 +571,10 @@ Para problemas o preguntas:
 
 ---
 
+<div align="center">
+
 **Hecho con ❤️ para las empresas venezolanas.**
+
+[Repositorio](https://github.com/VzlaEder/DualLedger) · [Changelog](CHANGELOG.md) · [Migración](MIGRACION.md)
+
+</div>
