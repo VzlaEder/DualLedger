@@ -275,6 +275,7 @@
 import { verificarRifEnSeniat, lookupSharedCache } from '../utils/seniat.js'
 import CaptchaModal from './CaptchaModal.vue'
 import { showConfirm, showToast } from '../utils/dialog.js'
+import { playErrorSound } from '../utils/sound.js'
 
 export default {
   name: 'DataPreview',
@@ -418,11 +419,12 @@ export default {
           : ''
         showToast('RIF verificado' + suffix)
       } catch (e) {
-        if (e && (e.name === 'AbortError' || (e && e.message && e.message === 'Verificación cancelada'))) {
-          this.seniatError = {
-            ...this.seniatError,
-            [index]: 'Verificación cancelada'
-          }
+        const cancelled = e && (e.name === 'AbortError' ||
+          (e.message && e.message.startsWith('Verificación cancelada')))
+        if (cancelled) {
+          this.seniatError = { ...this.seniatError, [index]: '' }
+          playErrorSound()
+          showToast('Verificación cancelada', { type: 'warning' })
         } else {
           this.seniatError = {
             ...this.seniatError,

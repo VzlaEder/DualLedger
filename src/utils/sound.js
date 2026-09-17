@@ -49,8 +49,8 @@ export function playCompletionSound() {
     unlockAudio()
     if (!audioCtx) return
     const now = audioCtx.currentTime
-    playTone(audioCtx, 659.25, now, 0.18, 0.05)
-    playTone(audioCtx, 880, now + 0.12, 0.22, 0.045)
+    playTone(audioCtx, 659.25, now, 0.18, 0.09)
+    playTone(audioCtx, 880, now + 0.12, 0.22, 0.08)
   } catch (e) {
     // ignore
   }
@@ -62,8 +62,8 @@ export function playErrorSound() {
     unlockAudio()
     if (!audioCtx) return
     const now = audioCtx.currentTime
-    playTone(audioCtx, 349.23, now, 0.2, 0.05)
-    playTone(audioCtx, 261.63, now + 0.14, 0.26, 0.045)
+    playTone(audioCtx, 349.23, now, 0.2, 0.09)
+    playTone(audioCtx, 261.63, now + 0.14, 0.26, 0.08)
   } catch (e) {
     // ignore
   }
