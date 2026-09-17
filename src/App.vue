@@ -118,7 +118,7 @@ import History from './components/History.vue'
 import ApiKeySetup from './components/ApiKeySetup.vue'
 import SeniatSetup from './components/SeniatSetup.vue'
 import brandLogo from './assets/logo/DualLedger.svg'
-import { processImage } from './utils/ocr.js'
+import { processImage, expandFile } from './utils/ocr.js'
 import { hasApiKey } from './utils/apiKey.js'
 
 function emptyRecord(nro) {
@@ -267,56 +267,71 @@ if (controller.signal.aborted) break
     async handleImageLoaded(file, fileName, handwritten = false, signal = null) {
       this.progress = 0
 
-      const result = await processImage(file, (p) => {
-        this.loadingMessage = p.status === 'recognizing text'
-          ? `Reconociendo texto en "${fileName}"... ${Math.round(p.progress * 100)}%`
-          : p.status === 'loading language traineddata'
-          ? 'Cargando modelo de idioma...'
-          : p.status === 'enviando a Gemini'
-          ? 'Enviando a Gemini AI...'
-          : p.status === 'convirtiendo imagen'
-          ? 'Preparando imagen...'
-          : p.status === 'procesando respuesta'
-          ? 'Analizando documento con Gemini...'
-          : p.status === 'parseando datos'
-          ? 'Estructurando datos...'
-          : p.status === 'gemini-fallback'
-          ? 'Gemini falló; usando Tesseract (OCR local)...'
-          : `Procesando "${fileName}"...`
-        this.progress = Math.round((p.progress || 0) * 100)
-      }, { handwritten, signal })
+      const pages = await expandFile(file)
 
-      if (signal && signal.aborted) {
-        const err = new Error('Operación cancelada')
-        err.name = 'AbortError'
-        throw err
+      for (let p = 0; p < pages.length; p++) {
+        if (signal && signal.aborted) {
+          const err = new Error('Operación cancelada')
+          err.name = 'AbortError'
+          throw err
+        }
+
+        const page = pages[p]
+        const pageName = pages.length > 1
+          ? `${fileName} (pág. ${p + 1}/${pages.length})`
+          : fileName
+
+        const result = await processImage(page.blob, (pr) => {
+          this.loadingMessage = pr.status === 'recognizing text'
+            ? `Reconociendo texto en "${pageName}"... ${Math.round(pr.progress * 100)}%`
+            : pr.status === 'loading language traineddata'
+            ? 'Cargando modelo de idioma...'
+            : pr.status === 'enviando a Gemini'
+            ? 'Enviando a Gemini AI...'
+            : pr.status === 'convirtiendo imagen'
+            ? 'Preparando imagen...'
+            : pr.status === 'procesando respuesta'
+            ? 'Analizando documento con Gemini...'
+            : pr.status === 'parseando datos'
+            ? 'Estructurando datos...'
+            : pr.status === 'gemini-fallback'
+            ? 'Gemini falló; usando Tesseract (OCR local)...'
+            : `Procesando "${pageName}"...`
+          this.progress = Math.round((pr.progress || 0) * 100)
+        }, { handwritten, signal })
+
+        if (signal && signal.aborted) {
+          const err = new Error('Operación cancelada')
+          err.name = 'AbortError'
+          throw err
+        }
+
+        this.rawTexts.push({
+          fileName: pageName || 'Imagen',
+          text: result.rawText,
+          engine: result.engine || 'tesseract',
+          note: result.geminiNote || '',
+          handwritten
+        })
+
+        let newRecords = result.parsedData
+
+        if (newRecords.length === 0 && result.lines.length > 0) {
+          newRecords = [emptyRecord(1)]
+          newRecords[0].rawText = result.rawText
+        }
+
+        newRecords.forEach(r => {
+          r.source = pageName || 'Imagen'
+          r.engine = result.engine || 'tesseract'
+          r.note = result.geminiNote || ''
+          if (handwritten) r.handwritten = true
+          if (r.confidencias && Object.keys(r.confidencias).length > 0) r.handwritten = true
+        })
+
+        this.records.push(...newRecords)
+        this.renumberRecords()
       }
-
-      this.rawTexts.push({
-        fileName: fileName || 'Imagen',
-        text: result.rawText,
-        engine: result.engine || 'tesseract',
-        note: result.geminiNote || '',
-        handwritten
-      })
-
-      let newRecords = result.parsedData
-
-      if (newRecords.length === 0 && result.lines.length > 0) {
-        newRecords = [emptyRecord(1)]
-        newRecords[0].rawText = result.rawText
-      }
-
-      newRecords.forEach(r => {
-        r.source = fileName || 'Imagen'
-        r.engine = result.engine || 'tesseract'
-        r.note = result.geminiNote || ''
-        if (handwritten) r.handwritten = true
-        if (r.confidencias && Object.keys(r.confidencias).length > 0) r.handwritten = true
-      })
-
-      this.records.push(...newRecords)
-      this.renumberRecords()
     },
 
     handleUpdateRecord(index, updatedRecord) {

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "idb": "^8.0.0",
+    "pdfjs-dist": "^6.3.289",
     "tesseract.js": "^5.1.0",
     "vue": "^3.4.0",
     "xlsx": "^0.18.5"

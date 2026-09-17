@@ -4,6 +4,39 @@ import { parseReportData } from './parse'
 import { recognizeWithGemini } from './gemini'
 import { hasApiKey } from './apiKey'
 
+export async function expandFile(file) {
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')
+  if (!isPdf) return [{ blob: file, name: file.name || 'Imagen' }]
+  return renderPdfPages(file)
+}
+
+async function renderPdfPages(file) {
+  const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
+  const workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
+  GlobalWorkerOptions.workerSrc = workerSrc
+
+  const data = await file.arrayBuffer()
+  const pdf = await getDocument({ data }).promise
+  const pages = []
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const viewport = page.getViewport({ scale: 2 })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.ceil(viewport.width)
+    canvas.height = Math.ceil(viewport.height)
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    await page.render({ canvasContext: ctx, viewport }).promise
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) throw new Error('No se pudo renderizar una página del PDF')
+    pages.push({ blob, name: `${file.name || 'PDF'} (pág. ${i})` })
+  }
+
+  return pages
+}
+
 export async function processImage(imageFile, onProgress, options = {}) {
   if (hasApiKey()) {
     try {
