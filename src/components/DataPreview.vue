@@ -131,6 +131,10 @@
             <span class="field-label">Nro. Control:</span>
             <span class="field-value">{{ record.nroControl || '-' }}</span>
           </div>
+          <div class="field-row" v-if="record.numeroMaquinaFiscal">
+            <span class="field-label">Nro. Máquina Fiscal:</span>
+            <span class="field-value">{{ record.numeroMaquinaFiscal }}</span>
+          </div>
           <div class="field-row highlight" :class="{ doubtful: isDoubtful(record, 'totalComprasIVA') }">
             <span class="field-label">Total Compras (IVA incl.):</span>
             <span class="field-value amount">{{ formatAmount(record.totalComprasIVA) }}</span>

@@ -1,6 +1,6 @@
 import { PRINT_EXTRACTION_PROMPT, INVOICE_EXTRACTION_PROMPT } from './prompts'
 import { getApiKey } from './apiKey'
-import { createEmptyRecord } from './parse'
+import { createEmptyRecord, sanitizeControlNumber, parseAmount } from './parse'
 
 const GEMINI_MODEL = 'gemini-3.5-flash-lite'
 const GEMINI_CAPTCHA_MODEL = 'gemini-3.5-flash-lite'
@@ -271,6 +271,7 @@ function mapToRecord(json) {
   record.fecha = json.fecha || ''
   record.nroFactura = cleanDocNumber(json.nroFactura)
   record.nroControl = cleanControlNumber(json.nroControl)
+  record.numeroMaquinaFiscal = json.numeroMaquinaFiscal || ''
   record.nroNotaCredito = cleanDocNumber(json.nroNotaCredito)
   record.nroNotaDebito = cleanDocNumber(json.nroNotaDebito)
   record.totalComprasIVA = parseNumber(json.totalComprasIVA)
@@ -289,6 +290,9 @@ function mapToRecord(json) {
     record.creditoFiscalNac = Math.round(record.baseNacional * 0.16 * 100) / 100
   }
 
+  const ctx = [json.tipoDocumento, json.nombreRazon, json.rif, json.nroControl, json.numeroMaquinaFiscal].filter(Boolean).join(' ')
+  sanitizeControlNumber(record, ctx, json.numeroMaquinaFiscal)
+
   return record
 }
 
@@ -305,23 +309,15 @@ function cleanDocNumber(value) {
 
 function cleanControlNumber(value) {
   if (!value) return ''
-  return String(value).replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+  const raw = String(value).trim()
+  if (/^00[-.]?0$/.test(raw)) return '00-0'
+  return raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
 }
 
 function parseNumber(value) {
   if (value === null || value === undefined || value === '') return 0
   if (typeof value === 'number') return value
-  const cleaned = String(value)
-    .replace(/[^\d.,\-]/g, '')
-    .replace(/\./g, match => match)
-  if (cleaned.includes(',') && cleaned.includes('.')) {
-    return parseFloat(cleaned.replace(/,/g, '')) || 0
-  }
-  if (cleaned.includes(',')) {
-    const asDot = cleaned.replace(',', '.')
-    return parseFloat(asDot) || 0
-  }
-  return parseFloat(cleaned) || 0
+  return parseAmount(String(value).replace(/[^\d.,\-]/g, ''))
 }
 
 function formatAsText(record) {

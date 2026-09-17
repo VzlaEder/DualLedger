@@ -130,6 +130,7 @@ function emptyRecord(nro) {
     porcentajeContribucion: '',
     nroFactura: '',
     nroControl: '',
+    numeroMaquinaFiscal: '',
     nroNotaDebito: '',
     nroNotaCredito: '',
     tipoTransaccion: '01 -Reg',

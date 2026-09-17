@@ -135,6 +135,8 @@ function parseBlock(blockLines) {
     record.nroControl = normalizeControlNumber(controlNum)
   }
 
+  sanitizeControlNumber(record, text)
+
   const igtfMatch = text.match(/IGTF\s*[:.]?\s*([\d.,]+)/i)
   if (igtfMatch) {
     record.igtf = parseAmount(igtfMatch[1])
@@ -194,6 +196,7 @@ export function createEmptyRecord() {
     porcentajeContribucion: '',
     nroFactura: '',
     nroControl: '',
+    numeroMaquinaFiscal: '',
     nroNotaDebito: '',
     nroNotaCredito: '',
     tipoTransaccion: '01 -Reg',
@@ -265,9 +268,63 @@ function normalizeDocNumber(value) {
   return out
 }
 
+const CONTROL_SENTINEL = '00-0'
+
 function normalizeControlNumber(value) {
   if (!value) return ''
-  return String(value).replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+  const raw = String(value).trim()
+  if (/^00[-.]?0$/.test(raw)) return CONTROL_SENTINEL
+  return raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+}
+
+const REPORTE_Z_RE = /REPORTE\s*Z|CIERRE\s*Z|COMPROBANTE\s*Z/i
+const MAQUINA_FISCAL_RE = /M[AÁ]QUINA\s*FISCAL|#?\s*CONTROL\s*\/\s*SERIAL\s*IF/i
+const CONTROL_PREFIX_RE = /(?:NRO\.?\s*)?(?:COO|COD|CONTROL)\s*[:.]\s*([0-9][0-9\-. ]*[0-9]|[0-9])/i
+const SERIAL_MAQUINA_RE = /^(ZZ[A-Z]|Z\d[A-Z])[A-Z0-9]*/i
+const SERIAL_MAQUINA_ANY_RE = /(?:ZZ[A-Z]|Z\d[A-Z])[A-Z0-9]{3,}/i
+const SERIAL_MAQUINA_LABEL_RE = /(?:SERIAL|SERIE|NRO?\s*M[AÁ]QUINA|M[AÁ]QUINA\s*FISCAL|#?\s*CONTROL\s*\/\s*SERIAL\s*IF)\s*[:.?#]?\s*([A-Z0-9\-]{4,})/i
+
+function looksLikeSerialMaquina(value) {
+  if (!value) return false
+  return SERIAL_MAQUINA_RE.test(String(value))
+}
+
+export function sanitizeControlNumber(record, text, serialCandidate) {
+  const source = text || ''
+  const serialCandidateClean = serialCandidate
+    ? String(serialCandidate).replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+    : ''
+
+  const isReporteZ = record.tipoDocumento === 'reporte_z' || REPORTE_Z_RE.test(source)
+  const hasSerial = looksLikeSerialMaquina(record.nroControl) ||
+    looksLikeSerialMaquina(serialCandidateClean) ||
+    SERIAL_MAQUINA_ANY_RE.test(source)
+  const isFiscal = isReporteZ || MAQUINA_FISCAL_RE.test(source) || hasSerial
+
+  const controlMatch = source.match(CONTROL_PREFIX_RE)
+  if (controlMatch && controlMatch[1]) {
+    record.nroControl = controlMatch[1].replace(/[^0-9]/g, '')
+  }
+
+  const serialLabelMatch = source.match(SERIAL_MAQUINA_LABEL_RE)
+  if (serialLabelMatch && serialLabelMatch[1]) {
+    record.numeroMaquinaFiscal = serialLabelMatch[1].toUpperCase()
+  } else if (looksLikeSerialMaquina(record.nroControl)) {
+    record.numeroMaquinaFiscal = record.nroControl
+    record.nroControl = ''
+  } else if (!record.numeroMaquinaFiscal && serialCandidateClean && isFiscal) {
+    record.numeroMaquinaFiscal = serialCandidateClean
+  }
+
+  if (isFiscal && !record.nroControl) {
+    record.nroControl = CONTROL_SENTINEL
+  }
+
+  if (!isFiscal) {
+    record.numeroMaquinaFiscal = ''
+  }
+
+  return record
 }
 
 function tryParseFallback(fullText) {
