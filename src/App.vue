@@ -124,6 +124,7 @@ import { hasApiKey } from './utils/apiKey.js'
 function emptyRecord(nro) {
   return {
     nro,
+    tipoDocumento: 'factura',
     fecha: '',
     rif: '',
     nombreRazon: '',

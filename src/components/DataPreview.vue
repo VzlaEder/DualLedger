@@ -123,7 +123,11 @@
             <span class="field-label">Condición:</span>
             <span class="field-value">{{ record.condicion }}</span>
           </div>
-          <div class="field-row" :class="{ doubtful: isDoubtful(record, 'nroFactura') }">
+          <div
+            class="field-row"
+            v-if="record.tipoDocumento !== 'nota_credito' && record.tipoDocumento !== 'nota_debito'"
+            :class="{ doubtful: isDoubtful(record, 'nroFactura') }"
+          >
             <span class="field-label">Nro. Factura:</span>
             <span class="field-value">{{ record.nroFactura || '-' }}</span>
           </div>
@@ -134,6 +138,18 @@
           <div class="field-row" v-if="record.numeroMaquinaFiscal">
             <span class="field-label">Nro. Máquina Fiscal:</span>
             <span class="field-value">{{ record.numeroMaquinaFiscal }}</span>
+          </div>
+          <div class="field-row" v-if="record.nroNotaCredito">
+            <span class="field-label">Nro. Nota de Crédito:</span>
+            <span class="field-value">{{ record.nroNotaCredito }}</span>
+          </div>
+          <div class="field-row" v-if="record.nroNotaDebito">
+            <span class="field-label">Nro. Nota de Débito:</span>
+            <span class="field-value">{{ record.nroNotaDebito }}</span>
+          </div>
+          <div class="field-row" v-if="record.nroFacturaAfectada">
+            <span class="field-label">Nro. Factura Afectada:</span>
+            <span class="field-value">{{ record.nroFacturaAfectada }}</span>
           </div>
           <div class="field-row highlight" :class="{ doubtful: isDoubtful(record, 'totalComprasIVA') }">
             <span class="field-label">Total Compras (IVA incl.):</span>
@@ -469,7 +485,7 @@ export default {
       return new Intl.NumberFormat('es-VE', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
-      }).format(val)
+      }).format(Math.abs(val))
     },
 
     docTypeLabel(type) {

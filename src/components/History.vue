@@ -92,7 +92,7 @@ export default {
       return 'Bs. ' + new Intl.NumberFormat('es-VE', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
-      }).format(val)
+      }).format(Math.abs(val))
     }
   }
 }

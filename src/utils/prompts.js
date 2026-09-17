@@ -20,6 +20,7 @@ CAMPOS A EXTRAER (usa null si no se encuentra el campo):
   "numeroMaquinaFiscal": "Serial de la máquina fiscal (tickets de máquina fiscal y Reportes Z). Incluye lo que sigue a '#CONTROL/SERIAL IF:' y cadenas tipo ZZP0023685 o Z7C7023199. No aplica a facturas de imprenta/notas normales.",
   "nroNotaCredito": "Número de nota de crédito (solo dígitos)",
   "nroNotaDebito": "Número de nota de débito (solo dígitos)",
+  "nroFacturaAfectada": "Número de la factura afectada (solo dígitos; solo en notas de crédito/débito, ej: HFAC)",
   "totalComprasIVA": "Monto total con IVA incluido (número decimal, sin símbolo de moneda)",
   "baseImponible": "Base imponible (monto antes de IVA, si es visible)",
   "igtf": "Monto IGTF (si aparece)",
@@ -35,9 +36,10 @@ REGLAS CRÍTICAS:
 5. Si el documento tiene múltiples registros (ej: reporte Z con varias líneas), extrae el PRIMER registro visible.
 6. El IVA en Venezuela es 16%. Si ves el total y la base, verifica que total ≈ base * 1.16.
 7. Responde SOLO con el JSON, sin texto adicional, sin markdown, sin bloques de código.
-8. DETECCIÓN DE TIPO: Clasifica el documento como "factura" o "reporte_z" (cierre Z de máquina fiscal).
+8. DETECCIÓN DE TIPO: Clasifica el documento como "factura", "nota_credito", "nota_debito", "reporte_z" (cierre Z de máquina fiscal) u "otro".
 9. Las facturas de máquina fiscal (tickets) y los Reportes Z por lo general NO traen Número de Control impreso. El código al pie del ticket (ej: ZZP0023685, Z7C7023199, o lo que siga a "#CONTROL/SERIAL IF:") es el Serial de la Máquina Fiscal, NO el número de control.
-10. En tickets de máquina fiscal y Reportes Z sin prefijo de control explícito (COO:, COD:, NRO CONTROL:): asigna "00-0" a nroControl y guarda el serial del pie del ticket en numeroMaquinaFiscal. En facturas de imprenta y notas normales, numeroMaquinaFiscal debe ser null.`
+10. En tickets de máquina fiscal y Reportes Z sin prefijo de control explícito (COO:, COD:, NRO CONTROL:): asigna "00-0" a nroControl y guarda el serial del pie del ticket en numeroMaquinaFiscal. En facturas de imprenta y notas normales, numeroMaquinaFiscal debe ser null.
+11. NOTAS DE CRÉDITO/DÉBITO: si el documento es una nota, coloca su número propio en nroNotaCredito o nroNotaDebito, y el número de la factura que afecta (HFAC, "Factura Afectada" o "Documento Afectado") en nroFacturaAfectada. En ese caso deja nroFactura en null. Los montos de la nota van en POSITIVO (el signo lo aplica el sistema).`
 
 const CONFIDENCE_INSTRUCTIONS = `
 

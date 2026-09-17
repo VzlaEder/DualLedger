@@ -26,6 +26,16 @@ export function parseReportData(lines, fullText) {
     if (fallback.length > 0) records.push(...fallback)
   }
 
+  const afectadaFull = fullText && fullText.match(/(?:H\s*F\s*A\.?\s*C|FACTURA\s*AFECTADA|DOC(?:UMENTO)?\s*AFECTADO)\s*[:.]?\s*([0-9][0-9A-Za-z\-]*)/i)
+
+  for (const record of records) {
+    const esNota = record.tipoDocumento === 'nota_credito' || record.tipoDocumento === 'nota_debito'
+    if (esNota && !record.nroFacturaAfectada && afectadaFull) {
+      record.nroFacturaAfectada = normalizeDocNumber(afectadaFull[1])
+    }
+    applyNotaAdjustments(record)
+  }
+
   return records
 }
 
@@ -72,6 +82,14 @@ function isRecordStart(line) {
 function parseBlock(blockLines) {
   const text = blockLines.join('\n')
   const record = createEmptyRecord()
+
+  if (/NOTA\s*DE\s*CR[EÉ]DITO/i.test(text)) {
+    record.tipoDocumento = 'nota_credito'
+  } else if (/NOTA\s*DE\s*D[EÉ]BITO/i.test(text)) {
+    record.tipoDocumento = 'nota_debito'
+  } else if (/REPORTE\s*Z|CIERRE\s*Z|COMPROBANTE\s*Z/i.test(text)) {
+    record.tipoDocumento = 'reporte_z'
+  }
 
   const totalMatch = text.match(/^(?:TOTAL|TOT)\b.*?(?:Bs\.?)?\s*[:.]?\s*([\d.,]+)/im)
   if (totalMatch) {
@@ -135,6 +153,11 @@ function parseBlock(blockLines) {
     record.nroControl = normalizeControlNumber(controlNum)
   }
 
+  const afectadaMatch = text.match(/(?:H\s*F\s*A\.?\s*C|FACTURA\s*AFECTADA|DOC(?:UMENTO)?\s*AFECTADO)\s*[:.]?\s*([0-9][0-9A-Za-z\-]*)/i)
+  if (afectadaMatch) {
+    record.nroFacturaAfectada = normalizeDocNumber(afectadaMatch[1])
+  }
+
   sanitizeControlNumber(record, text)
 
   const igtfMatch = text.match(/IGTF\s*[:.]?\s*([\d.,]+)/i)
@@ -147,7 +170,7 @@ function parseBlock(blockLines) {
     record.retIVA = parseAmount(retMatch[1])
   }
 
-  const hasDocNum = record.nroNotaCredito || record.nroNotaDebito || record.nroFactura || record.nroControl
+  const hasDocNum = record.nroNotaCredito || record.nroNotaDebito || record.nroFactura
   if (record.totalComprasIVA <= 0 && !hasDocNum) {
     return null
   }
@@ -187,9 +210,44 @@ function extractIssuer(blockLines) {
   }
 }
 
+export const TIPOS_DOCUMENTO = ['factura', 'nota_credito', 'nota_debito', 'reporte_z', 'otro']
+
+export function normalizeTipoDocumento(value) {
+  const raw = String(value || '').toLowerCase().trim()
+  if (!raw) return 'factura'
+  return TIPOS_DOCUMENTO.includes(raw) ? raw : 'factura'
+}
+
+const CAMPOS_MONTOS = [
+  'totalComprasIVA', 'noGravadas', 'baseNacional', 'creditoFiscalNac',
+  'baseImportacion', 'creditoFiscalImp', 'igtf', 'retIVA'
+]
+
+export function applyNotaAdjustments(record) {
+  if (record.tipoDocumento !== 'nota_credito' && record.tipoDocumento !== 'nota_debito') {
+    return record
+  }
+
+  if (!record.nroFacturaAfectada && record.nroFactura) {
+    record.nroFacturaAfectada = record.nroFactura
+  }
+  record.nroFactura = ''
+
+  if (record.tipoDocumento === 'nota_credito') {
+    for (const key of CAMPOS_MONTOS) {
+      if (typeof record[key] === 'number' && record[key] !== 0) {
+        record[key] = -Math.abs(record[key])
+      }
+    }
+  }
+
+  return record
+}
+
 export function createEmptyRecord() {
   return {
     nro: 1,
+    tipoDocumento: 'factura',
     fecha: '',
     rif: '',
     nombreRazon: '',

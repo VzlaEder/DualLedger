@@ -1,6 +1,6 @@
 import { PRINT_EXTRACTION_PROMPT, INVOICE_EXTRACTION_PROMPT } from './prompts'
 import { getApiKey } from './apiKey'
-import { createEmptyRecord, sanitizeControlNumber, parseAmount } from './parse'
+import { createEmptyRecord, sanitizeControlNumber, parseAmount, normalizeTipoDocumento, applyNotaAdjustments } from './parse'
 
 const GEMINI_MODEL = 'gemini-3.5-flash-lite'
 const GEMINI_CAPTCHA_MODEL = 'gemini-3.5-flash-lite'
@@ -265,7 +265,7 @@ function mapToRecord(json) {
   })
   record.confidencias = confidencias
 
-  record.tipoDocumento = json.tipoDocumento || ''
+  record.tipoDocumento = normalizeTipoDocumento(json.tipoDocumento)
   record.rif = json.rif || ''
   record.nombreRazon = json.nombreRazon || ''
   record.fecha = json.fecha || ''
@@ -274,6 +274,7 @@ function mapToRecord(json) {
   record.numeroMaquinaFiscal = json.numeroMaquinaFiscal || ''
   record.nroNotaCredito = cleanDocNumber(json.nroNotaCredito)
   record.nroNotaDebito = cleanDocNumber(json.nroNotaDebito)
+  record.nroFacturaAfectada = cleanDocNumber(json.nroFacturaAfectada)
   record.totalComprasIVA = parseNumber(json.totalComprasIVA)
   record.baseNacional = parseNumber(json.baseImponible)
   record.igtf = parseNumber(json.igtf)
@@ -292,6 +293,8 @@ function mapToRecord(json) {
 
   const ctx = [json.tipoDocumento, json.nombreRazon, json.rif, json.nroControl, json.numeroMaquinaFiscal].filter(Boolean).join(' ')
   sanitizeControlNumber(record, ctx, json.numeroMaquinaFiscal)
+
+  applyNotaAdjustments(record)
 
   return record
 }
