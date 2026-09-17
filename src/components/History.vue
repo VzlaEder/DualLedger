@@ -41,6 +41,7 @@
 
 <script>
 import { getAllRecords, deleteRecord } from '../stores/db.js'
+import { showConfirm, showToast } from '../utils/dialog.js'
 
 export default {
   name: 'History',
@@ -60,18 +61,28 @@ export default {
     },
 
     async handleDelete(id) {
-      if (confirm('¿Eliminar este registro del historial?')) {
+      const confirmed = await showConfirm('¿Eliminar este registro del historial?', {
+        confirmText: 'Eliminar',
+        danger: true
+      })
+      if (confirmed) {
         await deleteRecord(id)
         this.records = this.records.filter(r => r.id !== id)
+        showToast('Registro del historial eliminado')
       }
     },
 
     async clearAll() {
-      if (confirm('¿Eliminar todo el historial?')) {
+      const confirmed = await showConfirm('¿Eliminar todo el historial?', {
+        confirmText: 'Eliminar todo',
+        danger: true
+      })
+      if (confirmed) {
         for (const r of this.records) {
           await deleteRecord(r.id)
         }
         this.records = []
+        showToast('Historial eliminado')
       }
     },
 

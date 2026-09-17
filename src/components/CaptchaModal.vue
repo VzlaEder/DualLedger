@@ -1,5 +1,5 @@
 <template>
-  <div class="captcha-overlay" @click.self="cancel">
+  <div class="captcha-overlay">
     <div class="captcha-modal">
       <h3>&#127760; Verificación del SENIAT</h3>
       <p>No se pudo leer el captcha automáticamente. Escribe el código que ves en la imagen:</p>

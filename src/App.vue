@@ -20,6 +20,13 @@
             &#9881;
           </button>
           <button
+            class="sound-toggle"
+            @click="toggleSound"
+            :title="soundOn ? 'Silenciar avisos' : 'Activar avisos'"
+          >
+            <span v-html="soundOn ? '&#128266;' : '&#128263;'"></span>
+          </button>
+          <button
             class="theme-toggle"
             @click="toggleTheme"
             :title="theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
@@ -99,6 +106,9 @@
 
     <SeniatSetup ref="seniatSetupRef" />
 
+    <DialogHost />
+    <ToastHost />
+
     <div v-if="loading" class="loading-overlay">
       <div class="loading-spinner"></div>
       <p class="loading-text">{{ loadingMessage }}</p>
@@ -117,9 +127,13 @@ import ExcelExport from './components/ExcelExport.vue'
 import History from './components/History.vue'
 import ApiKeySetup from './components/ApiKeySetup.vue'
 import SeniatSetup from './components/SeniatSetup.vue'
+import DialogHost from './components/DialogHost.vue'
+import ToastHost from './components/ToastHost.vue'
 import brandLogo from './assets/logo/DualLedger.svg'
 import { processImage, expandFile } from './utils/ocr.js'
 import { hasApiKey } from './utils/apiKey.js'
+import { showConfirm, showToast } from './utils/dialog.js'
+import { isSoundEnabled, setSoundEnabled, unlockAudio, playCompletionSound } from './utils/sound.js'
 
 function emptyRecord(nro) {
   return {
@@ -156,7 +170,7 @@ function emptyRecord(nro) {
 
 export default {
   name: 'App',
-  components: { ImageUploader, DataPreview, ExcelExport, History, ApiKeySetup, SeniatSetup },
+  components: { ImageUploader, DataPreview, ExcelExport, History, ApiKeySetup, SeniatSetup, DialogHost, ToastHost },
   data() {
     return {
       brandLogo,
@@ -176,7 +190,8 @@ export default {
       canInstall: false,
       deferredPrompt: null,
       hasApiKey: hasApiKey(),
-      theme: 'light'
+      theme: 'light',
+      soundOn: isSoundEnabled()
     }
   },
   mounted() {
@@ -197,6 +212,7 @@ export default {
       this.processingAbortController = controller
 
       try {
+        unlockAudio()
         this.loading = true
         this.progress = 0
 
@@ -242,6 +258,8 @@ if (controller.signal.aborted) break
       }
 
       this.currentTab = 'preview'
+      playCompletionSound()
+      showToast('Procesamiento completado')
       } catch (e) {
         if (e && e.name === 'AbortError') {
           this.loadingMessage = 'Procesamiento cancelado'
@@ -342,12 +360,18 @@ if (controller.signal.aborted) break
     handleDeleteRecord(index) {
       this.records.splice(index, 1)
       this.renumberRecords()
+      showToast('Registro eliminado')
     },
 
-    handleClearRecords() {
-      if (confirm('¿Limpiar todos los registros de la sesión actual?')) {
+    async handleClearRecords() {
+      const confirmed = await showConfirm('¿Limpiar todos los registros de la sesión actual?', {
+        confirmText: 'Limpiar',
+        danger: true
+      })
+      if (confirmed) {
         this.records = []
         this.rawTexts = []
+        showToast('Registros de la sesión limpiados')
       }
     },
 
@@ -413,6 +437,15 @@ if (controller.signal.aborted) break
 
     toggleTheme() {
       this.setTheme(this.theme === 'dark' ? 'light' : 'dark')
+    },
+
+    toggleSound() {
+      this.soundOn = !this.soundOn
+      setSoundEnabled(this.soundOn)
+      if (this.soundOn) {
+        unlockAudio()
+        playCompletionSound()
+      }
     },
 
     openSeniatSetup() {
@@ -606,6 +639,26 @@ html, body {
 
 .tools-toggle:hover {
   background: rgba(255, 255, 255, 0.24);
+}
+
+.sound-toggle {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.sound-toggle:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .theme-toggle:hover {

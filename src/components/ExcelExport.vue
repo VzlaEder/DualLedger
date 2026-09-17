@@ -98,6 +98,7 @@
 <script>
 import { generateExcel } from '../utils/excelTemplate.js'
 import { saveExcelRecord } from '../stores/db.js'
+import { showAlert } from '../utils/dialog.js'
 
 export default {
   name: 'ExcelExport',
@@ -139,7 +140,7 @@ export default {
 
         this.$emit('exported', info)
       } catch (err) {
-        alert('Error al exportar: ' + err.message)
+        await showAlert('Error al exportar: ' + err.message, { type: 'error' })
       } finally {
         this.exporting = false
       }

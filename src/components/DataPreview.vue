@@ -274,6 +274,7 @@
 <script>
 import { verificarRifEnSeniat, lookupSharedCache } from '../utils/seniat.js'
 import CaptchaModal from './CaptchaModal.vue'
+import { showConfirm, showToast } from '../utils/dialog.js'
 
 export default {
   name: 'DataPreview',
@@ -411,6 +412,11 @@ export default {
           porcentajeContribucion: res.porcentajeContribucion,
           condicion: res.condicion || current.condicion
         })
+        const nombre = (res.nombreRazon || current.nombreRazon || '').trim()
+        const suffix = nombre
+          ? ': ' + (nombre.length > 40 ? nombre.slice(0, 40) + '\u2026' : nombre)
+          : ''
+        showToast('RIF verificado' + suffix)
       } catch (e) {
         if (e && (e.name === 'AbortError' || (e && e.message && e.message === 'Verificación cancelada'))) {
           this.seniatError = {
@@ -488,7 +494,9 @@ export default {
           updated.condicion = ''
           this.seniatError = { ...this.seniatError, [index]: '' }
         }
+        const changed = Object.keys(updated).some((k) => updated[k] !== original[k])
         this.$emit('update-record', index, updated)
+        if (changed) showToast('Registro actualizado')
         this.editingIndex = -1
       } else {
         this.editForm = { ...this.records[index] }
@@ -496,8 +504,12 @@ export default {
       }
     },
 
-    handleDelete(index) {
-      if (confirm('¿Eliminar este registro?')) {
+    async handleDelete(index) {
+      const confirmed = await showConfirm('¿Eliminar este registro?', {
+        confirmText: 'Eliminar',
+        danger: true
+      })
+      if (confirmed) {
         this.$emit('delete-record', index)
         if (this.editingIndex === index) this.editingIndex = -1
       }

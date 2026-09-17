@@ -116,6 +116,7 @@
 
 <script>
 import { renderPdfThumbnail } from '../utils/ocr.js'
+import { showAlert } from '../utils/dialog.js'
 
 export default {
   name: 'ImageUploader',
@@ -159,12 +160,12 @@ export default {
     addToQueue(file) {
       const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')
       if (!isPdf && !(file.type || '').startsWith('image/')) {
-        alert(`${file.name} no es una imagen ni un PDF.`)
+        showAlert(`${file.name} no es una imagen ni un PDF.`, { type: 'warning' })
         return
       }
       const maxSize = isPdf ? 25 * 1024 * 1024 : 10 * 1024 * 1024
       if (file.size > maxSize) {
-        alert(`${file.name} es demasiado grande. Máximo ${isPdf ? '25MB' : '10MB'}.`)
+        showAlert(`${file.name} es demasiado grande. Máximo ${isPdf ? '25MB' : '10MB'}.`, { type: 'warning' })
         return
       }
       const item = {
