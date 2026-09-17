@@ -55,3 +55,16 @@ export function playCompletionSound() {
     // ignore
   }
 }
+
+export function playErrorSound() {
+  if (!isSoundEnabled()) return
+  try {
+    unlockAudio()
+    if (!audioCtx) return
+    const now = audioCtx.currentTime
+    playTone(audioCtx, 349.23, now, 0.2, 0.05)
+    playTone(audioCtx, 261.63, now + 0.14, 0.26, 0.045)
+  } catch (e) {
+    // ignore
+  }
+}

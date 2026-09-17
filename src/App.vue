@@ -133,7 +133,7 @@ import brandLogo from './assets/logo/DualLedger.svg'
 import { processImage, expandFile } from './utils/ocr.js'
 import { hasApiKey } from './utils/apiKey.js'
 import { showConfirm, showToast } from './utils/dialog.js'
-import { isSoundEnabled, setSoundEnabled, unlockAudio, playCompletionSound } from './utils/sound.js'
+import { isSoundEnabled, setSoundEnabled, unlockAudio, playCompletionSound, playErrorSound } from './utils/sound.js'
 
 function emptyRecord(nro) {
   return {
@@ -215,6 +215,7 @@ export default {
         unlockAudio()
         this.loading = true
         this.progress = 0
+        let failCount = 0
 
         for (let i = 0; i < pendingItems.length; i++) {
           const item = pendingItems[i]
@@ -233,6 +234,7 @@ export default {
             }
           } catch (e) {
             if (e && e.name === 'AbortError') throw e
+            failCount++
             if (this.$refs.uploaderRef) {
               const queueIndex = this.$refs.uploaderRef.queue.indexOf(item)
               this.$refs.uploaderRef.updateItemStatus(queueIndex, 'error')
@@ -258,8 +260,16 @@ if (controller.signal.aborted) break
       }
 
       this.currentTab = 'preview'
-      playCompletionSound()
-      showToast('Procesamiento completado')
+      if (failCount === 0) {
+        playCompletionSound()
+        showToast('Procesamiento completado')
+      } else if (failCount >= pendingItems.length) {
+        playErrorSound()
+        showToast('El procesamiento falló', { type: 'error' })
+      } else {
+        playErrorSound()
+        showToast(`Procesamiento completado con ${failCount} error(es)`, { type: 'warning' })
+      }
       } catch (e) {
         if (e && e.name === 'AbortError') {
           this.loadingMessage = 'Procesamiento cancelado'
