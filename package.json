@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/ensure-server-deps.mjs",
     "predev": "node server/init-db.mjs",
     "dev": "vite",
     "build": "vite build",
-    "prestart": "node server/init-db.mjs && (test -d dist || npm run build)",
+    "prestart": "node server/init-db.mjs && node scripts/ensure-dist.mjs",
     "start": "node server/index.js",
     "preview": "vite preview"
   },
