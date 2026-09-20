@@ -404,6 +404,8 @@
 
 - Actualizados `README.md`, `.env.example` y `server/schema.sql` para PostgreSQL local.
 - Añadido `docker-compose.yml` en la raíz para levantar PostgreSQL localmente.
+- `README.md` (sección **Instalación**): pasos completos — dependencias de la app y del servidor,
+  configuración de `.env`, PostgreSQL (Docker o instalado) y arranque con un solo comando.
 
 ---
 

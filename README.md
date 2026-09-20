@@ -77,6 +77,7 @@
 
 - Node.js 18 o superior / Node.js 18 or higher
 - npm o yarn
+- PostgreSQL 14+ **o** Docker (solo para la caché compartida del SENIAT; opcional si no la usas)
 
 ### Pasos | Steps
 
@@ -87,14 +88,29 @@ git clone [URL_DEL_REPOSITORIO]
 # 2. Navegar al directorio / Navigate to directory
 cd DualLedger
 
-# 3. Instalar dependencias / Install dependencies
+# 3. Instalar dependencias / Install dependencies (app + servidor)
 npm install
+cd server && npm install && cd ..
 
-# 4. Iniciar servidor de desarrollo / Start development server
+# 4. Configurar variables de entorno / Set environment variables
+cp .env.example .env
+#    Edita DATABASE_URL para que apunte a tu PostgreSQL local (ver sección SENIAT)
+
+# 5. Levantar PostgreSQL / Start PostgreSQL (opción A: Docker)
+docker compose up -d
+#    ...o usa un PostgreSQL ya instalado en tu máquina (ver sección SENIAT)
+
+# 6. Iniciar servidor de desarrollo / Start development server
 npm run dev
 ```
 
-La aplicación estará disponible en `http://localhost:3000`
+La aplicación estará disponible en `http://localhost:3000`.
+
+> [!TIP]
+> La base de datos (tabla `rif_cache`) se **crea y actualiza automáticamente** al arrancar
+> (`server/init-db.mjs` se ejecuta vía el hook `predev`): no hace falta aplicar `schema.sql` a mano.
+> Un solo comando cubre todo: **`npm run dev`** para desarrollo y **`npm start`** para producción
+> (build + API + PostgreSQL en `:8787`).
 
 ---
 
