@@ -4,8 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node server/init-db.mjs",
     "dev": "vite",
     "build": "vite build",
+    "prestart": "node server/init-db.mjs && (test -d dist || npm run build)",
+    "start": "node server/index.js",
     "preview": "vite preview"
   },
   "dependencies": {

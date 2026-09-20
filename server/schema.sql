@@ -1,8 +1,16 @@
 -- ============================================================
--- DualLedger - Schema de base de datos para Supabase
+-- DualLedger - Schema de base de datos (PostgreSQL)
 -- ============================================================
--- Ejecutar este SQL en el SQL Editor de Supabase:
--- https://supabase.com/dashboard → tu proyecto → SQL Editor → New query
+-- Ejecutar contra cualquier PostgreSQL (local, VPS o Docker):
+--
+--   Opción A (Docker, ver docker-compose.yml en la raíz):
+--     docker compose up -d
+--     # el schema se aplica automáticamente en el primer arranque
+--
+--   Opción B (Postgres instalado localmente):
+--     createdb dualledger
+--     psql -d dualledger -f server/schema.sql
+--
 -- ============================================================
 
 -- Tabla de cache de RIFs verificados en el SENIAT
@@ -38,18 +46,6 @@ CREATE TRIGGER update_rif_cache_updated_at
   BEFORE UPDATE ON rif_cache
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
-
--- ============================================================
--- RLS (Row Level Security) - Deshabilitado por ahora
--- Habilitar si se necesita autenticación por empresa
--- ============================================================
-ALTER TABLE rif_cache ENABLE ROW LEVEL SECURITY;
-
--- Policy: permitir todo a usuarios autenticados (ajustar según necesidad)
-CREATE POLICY "Allow all for authenticated users" ON rif_cache
-  FOR ALL
-  USING (true)
-  WITH CHECK (true);
 
 -- ============================================================
 -- Datos de ejemplo (opcional, para probar)

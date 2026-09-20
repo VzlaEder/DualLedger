@@ -43,7 +43,7 @@
 - **OCR Dual:** Gemini AI (nube, mayor precisión) con fallback automático a Tesseract.js (local, gratuito)
 - **Documentos Impresos y Manuscritos:** Soporte completo con puntuación de confianza por campo
 - **Tipos de Documento:** Facturas, **notas de crédito**, **notas de débito** y reportes Z, con factura afectada y manejo de signos.
-- **Verificación SENIAT:** Consulta del RIF contra el portal público del SENIAT (razón social, % de contribución y condición), con captcha manual y caché compartida en Supabase.
+- **Verificación SENIAT:** Consulta del RIF contra el portal público del SENIAT (razón social, % de contribución y condición), con captcha manual y caché compartida en PostgreSQL.
 - **PWA Offline-First:** Funciona sin conexión después de la carga inicial
 - **Exportación Excel:** Genera archivos .xlsx en formato Libro de Compras venezolano
 - **Historial de Exportaciones:** Registro persistente en IndexedDB
@@ -62,7 +62,7 @@
 - **Dual OCR:** Gemini AI (cloud, higher accuracy) with automatic fallback to Tesseract.js (local, free)
 - **Printed and Handwritten Documents:** Full support with per-field confidence scoring
 - **Document Types:** Invoices, **credit notes**, **debit notes** and Z-reports, with affected invoice and sign handling.
-- **SENIAT Verification:** RIF lookup against the SENIAT public portal (company name, contribution %, condition), with manual captcha and shared Supabase cache.
+- **SENIAT Verification:** RIF lookup against the SENIAT public portal (company name, contribution %, condition), with manual captcha and shared PostgreSQL cache.
 - **Offline-First PWA:** Works without connection after initial load
 - **Excel Export:** Generates .xlsx files in Venezuelan Purchase Ledger format
 - **Export History:** Persistent record storage in IndexedDB
@@ -116,17 +116,15 @@ La aplicación estará disponible en `http://localhost:3000`
 ### Verificación de RIF en el SENIAT (opcional)
 
 Para rellenar automáticamente el nombre real (razón social), el % de contribución y la condición de
-cada RIF, la app consulta el portal público del SENIAT. Hay **dos modos**:
+cada RIF, la app consulta el portal público del SENIAT a través de un **backend 100% local**
+(Express + PostgreSQL) embebido en la ruta `/api`. Ideal para quedarte en tu propia infraestructura
+y moverlo después a tu propio dominio.
 
-| Modo | Cuándo | Backend |
-| --- | --- | --- |
-| **Proxy local** | Desarrollo (`npm run dev`) | `server/index.js` (Express) montado como middleware de Vite en `/api`, con caché en **Supabase** |
-| **Cloudflare Worker** | Producción | Worker `dual-ledger-seniat` con KV `RIF_CACHE` (ver más abajo) |
-
-#### Modo desarrollo: proxy local + Supabase
+#### Backend local: proxy Express + PostgreSQL
 
 El servidor Express (`server/index.js`) se integra en el servidor de desarrollo de Vite mediante el
-plugin `seniatProxy`, por lo que el cliente llama a `/api` sin necesidad de configurar una URL.
+plugin `seniatProxy`, por lo que el cliente llama a `/api` sin necesidad de configurar una URL. En
+producción puedes desplegar el mismo Express en tu propio dominio y el cliente seguirá usando `/api`.
 
 1. Instala las dependencias del servidor:
 
@@ -135,16 +133,29 @@ plugin `seniatProxy`, por lo que el cliente llama a `/api` sin necesidad de conf
    npm install
    ```
 
-2. Crea el archivo `.env` en la raíz con las credenciales de Supabase (usa `.env.example` como guía):
+2. Levanta PostgreSQL local (opción A: Docker, recomendada):
 
-   ```env
-   VITE_SENIAT_WORKER_URL=        # Vacío en desarrollo: se usa /api
-   SUPABASE_URL=https://<proyecto>.supabase.co
-   SUPABASE_ANON_KEY=<anon-key>
-   PORT=8787                      # Opcional (por defecto 8787)
+   ```bash
+   docker compose up -d
    ```
 
-3. Ejecuta `server/schema.sql` en el SQL Editor de Supabase para crear la tabla `rif_cache`.
+   O con un PostgreSQL instalado en tu máquina:
+
+   ```bash
+   createdb dualledger
+   psql -d dualledger -f server/schema.sql
+   ```
+
+   > El schema se aplica automáticamente la primera vez que el contenedor de Docker crea el
+   > volumen; el comando `psql` es la alternativa para instalaciones manuales.
+
+3. Crea el archivo `.env` en la raíz (usa `.env.example` como guía):
+
+   ```env
+   DATABASE_URL=postgres://dualledger:dualledger@localhost:5432/dualledger
+   VITE_SENIAT_WORKER_URL=        # Vacío: se usa el proxy local /api
+   PORT=8787                      # Opcional (por defecto 8787)
+   ```
 
 4. Inicia la app con `npm run dev`. El cliente usará el proxy local automáticamente.
 
@@ -152,38 +163,23 @@ plugin `seniatProxy`, por lo que el cliente llama a `/api` sin necesidad de conf
 > El RIF se normaliza sin guiones (por ejemplo, `J-508125843` → `J508125843`). Los RIF que **no
 > existen** no se cachean.
 
-#### Modo producción: Cloudflare Worker
+#### Modo producción: tu propio dominio
 
-> El Worker se ofrece como alternativa de despliegue. La URL puede configurarse por variable de
-> entorno (`VITE_SENIAT_WORKER_URL`) o desde la UI (botón ⚙). Además, el RIF normalizado sin
-> guiones se usa como clave de caché.
+Como todo corre en tu infraestructura, para producción basta con:
 
-**Despliegue inicial (una sola vez, por terminal):**
+1. Desplegar el servidor Express (`server/`) en tu servidor/VPS con tu PostgreSQL y la variable
+   `DATABASE_URL` apuntando a él.
+2. Servir el build de la app (`dist/`) desde el propio dominio (mismo origen), por lo que el
+   cliente usa `/api` sin configuración adicional.
+3. Opcional: si separas el backend en otro dominio, rellena `VITE_SENIAT_WORKER_URL` al compilar
+   (o guárdala desde la UI, panel ⚙ Herramientas, que además permite probar la conexión).
 
-```bash
-cd worker
-npx wrangler kv namespace create RIF_CACHE
-# Copia el "id" que imprime y pégalo en worker/wrangler.toml (campo id del bloque [[kv_namespaces]])
-npx wrangler login
-npx wrangler deploy
-```
+En la UI (botón ⚙ Herramientas) puedes verificar el estado del servicio: proxy activo y PostgreSQL
+conectado o deshabilitado, así como guardar o limpiar una URL alternativa.
 
-Cuando termine, copia la URL `https://...workers.dev` que imprime wrangler.
-
-**Configurar en la app:**
-
-1. Haz clic en el botón ⚙ (Herramientas) del encabezado.
-2. Pega la **Account ID** de Cloudflare (opcional, se autodetectaría).
-3. Pega el **API Token** de Cloudflare con permisos `Workers Scripts: Edit` y `Workers KV Storage: Edit`.
-4. Pega la **URL del Worker** `https://...workers.dev`.
-5. Clic en "Actualizar / desplegar Worker SENIAT".
-
-A partir de ahí, el botón ⚙ puede re-desplegar el Worker automáticamente (la PWA envía
-el código al Worker y este se actualiza a sí mismo vía la API de Cloudflare).
-
-> [!WARNING]
-> La API de Cloudflare **no permite** llamadas directas desde el navegador (CORS), por eso el
-> despliegue inicial se hace por terminal una única vez.
+> [!NOTE]
+> El **Cloudflare Worker** (`worker/`) queda disponible como alternativa opcional de backend SENIAT
+> (consulta `MIGRACION.md`), pero ya **no** forma parte del flujo principal de la app.
 
 ### Flujo de Trabajo
 
@@ -269,8 +265,8 @@ el código al Worker y este se actualiza a sí mismo vía la API de Cloudflare).
 ```
 
 La verificación SENIAT consulta la razón social, el % de contribución y la condición del RIF a
-través del proxy local (`/api`) o de un Cloudflare Worker, y guarda el resultado en caché
-(Supabase o KV).
+través del proxy local (`/api`), y guarda el resultado en caché en **PostgreSQL** (la caché KV
+del Cloudflare Worker queda solo como alternativa opcional).
 
 ### Pipeline de OCR
 
@@ -386,7 +382,7 @@ Si no configurás una API Key:
 | **idb** | ^8.0.0 | Envoltorio de IndexedDB para el historial |
 | **Workbox** | ^7.0.0 | Service worker para PWA |
 | **Express** | ^4.21.0 | Proxy local SENIAT (`server/`) |
-| **Supabase JS** | ^2.45.0 | Caché compartida de RIF (`rif_cache`) |
+| **node-postgres (pg)** | ^8.13.0 | Caché compartida de RIF en PostgreSQL (`rif_cache`) |
 | **IndexedDB** | Nativo | Persistencia local de datos |
 
 ### Dependencias de Desarrollo
@@ -410,13 +406,15 @@ DualLedger/
 │   ├── icon-512.png            # Icono PWA 512x512
 │   └── index.html              # HTML entry point (versión anterior)
 │
-├── server/                     # Proxy local SENIAT (Express + Supabase)
+├── server/                     # Proxy local SENIAT (Express + PostgreSQL)
 │   ├── index.js                # Endpoints /lookup, /verify, /captcha
-│   ├── schema.sql              # Esquema de la tabla rif_cache
+│   ├── schema.sql              # Esquema de la tabla rif_cache (PostgreSQL)
 │   └── package.json
 │
-├── worker/                     # Cloudflare Worker SENIAT (alternativa de producción)
+├── worker/                     # Cloudflare Worker SENIAT (alternativa opcional)
 │   └── src/index.js
+│
+├── docker-compose.yml          # PostgreSQL local (Docker)
 │
 ├── scripts/
 │   └── generate-logo.mjs       # Generación del logotipo
@@ -442,7 +440,6 @@ DualLedger/
 │   │
 │   └── utils/                  # Lógica de negocio
 │       ├── apiKey.js           # Almacenamiento API key (localStorage)
-│       ├── cloudflare.js       # API de Cloudflare (despliegue del Worker)
 │       ├── deslash.js          # Preprocesamiento de imagen
 │       ├── dialog.js           # Cola de diálogos y toasts
 │       ├── excelTemplate.js    # Plantilla Excel (SheetJS)
@@ -469,9 +466,16 @@ DualLedger/
 
 | Comando | Descripción |
 |---------|-------------|
-| `npm run dev` | Inicia servidor de desarrollo en `localhost:3000` (incluye el proxy SENIAT en `/api`) |
+| `npm run dev` | **Todo automático**: inicializa la BD (si falta el esquema) y arranca el servidor de desarrollo en `localhost:3000` (proxy SENIAT embebido en `/api`) |
+| `npm start` | **Todo automático**: inicializa la BD + genera el build si falta `dist/` + sirve producción en `127.0.0.1:8787` (estático + `/api` + PostgreSQL, mismo origen) |
 | `npm run build` | Genera build de producción en `dist/` |
 | `npm run preview` | Vista previa del build de producción |
+
+> [!TIP]
+> Para **pruebas rápidas** solo necesitas `npm run dev`. La base de datos se inicializa sola
+> (`server/init-db.mjs` se ejecuta vía el hook `predev`), siguiendo el esquema de
+> `server/schema.sql`. Requisito único: tener corriendo un PostgreSQL con el rol y la BD
+> indicados en `DATABASE_URL` (ver sección anterior).
 
 ### Scripts del servidor (`server/`)
 

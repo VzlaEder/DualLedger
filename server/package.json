@@ -2,16 +2,16 @@
   "name": "dualledger-server",
   "version": "1.0.0",
   "type": "module",
-  "description": "Proxy local para DualLedger - consulta SENIAT y cache en Supabase",
+  "description": "Proxy local para DualLedger - consulta SENIAT y cache en PostgreSQL",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
-    "express": "^4.21.0"
+    "express": "^4.21.0",
+    "pg": "^8.13.0"
   }
 }

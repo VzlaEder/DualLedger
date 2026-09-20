@@ -1,9 +1,10 @@
 import express from 'express'
 import cors from 'cors'
-import { createClient } from '@supabase/supabase-js'
+import pg from 'pg'
 import { config } from 'dotenv'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { existsSync } from 'fs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -21,15 +22,16 @@ const FORM_URL = `${SENIAT_BASE}/BuscaRif/BuscaRif.jsp`
 const CAPTCHA_URL = `${SENIAT_BASE}/BuscaRif/Captcha.jpg`
 const SENIAT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
-const supabaseUrl = process.env.SUPABASE_URL
-const supabaseKey = process.env.SUPABASE_ANON_KEY
-let supabase = null
+const { Pool } = pg
 
-if (supabaseUrl && supabaseKey) {
-  supabase = createClient(supabaseUrl, supabaseKey)
-  console.log('[Supabase] Conectado a', supabaseUrl)
+const databaseUrl = process.env.DATABASE_URL
+let pool = null
+
+if (databaseUrl) {
+  pool = new Pool({ connectionString: databaseUrl, max: 5 })
+  console.log('[Postgres] Conectado a la base de datos local')
 } else {
-  console.warn('[Supabase] No configurado - cache deshabilitado')
+  console.warn('[Postgres] No configurado (falta DATABASE_URL) - cache deshabilitado')
 }
 
 function decodeHtml(buf) {
@@ -124,14 +126,14 @@ function arrayBufferToBase64(buf) {
 }
 
 async function lookupCache(rif) {
-  if (!supabase) return null
+  if (!pool) return null
   try {
-    const { data, error } = await supabase
-      .from('rif_cache')
-      .select('rif, nombre_razon, porcentaje_contribucion, condicion')
-      .eq('rif', rif)
-      .single()
-    if (error || !data) return null
+    const { rows } = await pool.query(
+      'SELECT rif, nombre_razon, porcentaje_contribucion, condicion FROM rif_cache WHERE rif = $1',
+      [rif]
+    )
+    if (!rows.length) return null
+    const data = rows[0]
     return {
       rif: data.rif,
       nombreRazon: data.nombre_razon,
@@ -139,24 +141,25 @@ async function lookupCache(rif) {
       condicion: data.condicion
     }
   } catch (e) {
-    console.error('[Supabase] Lookup error:', e.message)
+    console.error('[Postgres] Lookup error:', e.message)
     return null
   }
 }
 
 async function saveCache(rif, data) {
-  if (!supabase) return
+  if (!pool) return
   try {
-    await supabase
-      .from('rif_cache')
-      .upsert({
-        rif,
-        nombre_razon: data.nombreRazon || '',
-        porcentaje_contribucion: data.porcentajeContribucion,
-        condicion: data.condicion || ''
-      }, { onConflict: 'rif' })
+    await pool.query(
+      `INSERT INTO rif_cache (rif, nombre_razon, porcentaje_contribucion, condicion)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (rif) DO UPDATE SET
+         nombre_razon = EXCLUDED.nombre_razon,
+         porcentaje_contribucion = EXCLUDED.porcentaje_contribucion,
+         condicion = EXCLUDED.condicion`,
+      [rif, data.nombreRazon || '', data.porcentajeContribucion, data.condicion || '']
+    )
   } catch (e) {
-    console.error('[Supabase] Save error:', e.message)
+    console.error('[Postgres] Save error:', e.message)
   }
 }
 
@@ -167,7 +170,7 @@ router.get('/', (req, res) => {
     ok: true,
     service: 'dualledger-proxy',
     message: 'Proxy local DualLedger. Usa /verify, /lookup, /captcha.',
-    supabase: !!supabase
+    postgres: !!pool
   })
 })
 
@@ -292,12 +295,33 @@ router.post('/verify', async (req, res) => {
 
 app.use('/api', router)
 
+// === Servido del build de producción (dist/) ===
+// Solo cuando el proceso se ejecuta de forma independiente (no como middleware de Vite):
+// node index.js sirve la app estática + /api + PostgreSQL desde el mismo origen.
+const isDirectRun = process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('server/index.js')
+
+if (isDirectRun) {
+  const distDir = join(__dirname, '..', 'dist')
+  if (existsSync(distDir)) {
+    app.use(express.static(distDir))
+    // SPA fallback: cualquier GET que no sea /api ni un asset vuelve a index.html
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api') || /\.[a-z0-9]+$/i.test(req.path)) {
+        return next()
+      }
+      res.sendFile(join(distDir, 'index.html'))
+    })
+    console.log(`[DualLedger] Sirviendo build estático de ${distDir}`)
+  } else {
+    console.warn('[DualLedger] No existe dist/ - sirviendo solo /api. Ejecuta antes: npm run build')
+  }
+}
+
 export { app }
 
-const isDirectRun = process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('server/index.js')
 if (isDirectRun) {
   app.listen(PORT, () => {
-    console.log(`[DualLedger] Proxy local corriendo en http://127.0.0.1:${PORT}`)
-    console.log(`[DualLedger] Supabase: ${supabase ? 'Conectado' : 'Deshabilitado'}`)
+    console.log(`[DualLedger] Servidor corriendo en http://127.0.0.1:${PORT}`)
+    console.log(`[DualLedger] PostgreSQL: ${pool ? 'Conectado' : 'Deshabilitado'}`)
   })
 }

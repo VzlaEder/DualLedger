@@ -376,10 +376,34 @@
 - El sonido requiere interacción del usuario para desbloquearse (comportamiento normal del navegador);
   la app ya lo maneja.
 - **No versionar:** `eng.traineddata` y `worker/dev8787.log`.
-- Variables de entorno relevantes: `VITE_SENIAT_WORKER_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+- Variables de entorno relevantes: `DATABASE_URL`, `VITE_SENIAT_WORKER_URL`,
   `PORT` (servidor local).
 
 </details>
+
+### 🗑️ Eliminado
+
+- Eliminado el flujo de despliegue del **Cloudflare Worker** desde la UI: el panel ⚙
+  "Herramientas" ya no pide token ni account de Cloudflare.
+- Eliminado `src/utils/cloudflare.js` y las funciones de token/cuenta de
+  `src/utils/settings.js`.
+
+### 🔄 Cambiado
+
+- La caché compartida de RIF pasa de **Supabase** a **PostgreSQL directo** (driver `pg`) vía
+  `DATABASE_URL` en el proxy local Express (`server/index.js`).
+- El cliente usa por defecto el proxy local **`/api`** en desarrollo y producción; la URL del
+  servicio queda como override opcional para un backend externo (ej. dominio propio).
+- El panel ⚙ "Herramientas" ahora muestra el estado del servicio local (proxy + PostgreSQL) y
+  permite guardar/limpiar una URL alternativa.
+- **Arranque con un solo comando:** `npm run dev` y `npm start` inicializan la base de datos
+  automáticamente (`server/init-db.mjs`, vía hooks `predev`/`prestart`). `npm start` además
+  sirve el build estático + `/api` + PostgreSQL desde el mismo origen (`server/index.js`).
+
+### 📚 Documentación
+
+- Actualizados `README.md`, `.env.example` y `server/schema.sql` para PostgreSQL local.
+- Añadido `docker-compose.yml` en la raíz para levantar PostgreSQL localmente.
 
 ---
 
