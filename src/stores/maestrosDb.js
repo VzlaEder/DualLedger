@@ -69,6 +69,35 @@ export async function countCuentas() {
   return db.count('cuentas')
 }
 
+// === Proveedores ===
+
+export async function saveProveedores(proveedores) {
+  const db = await getDB()
+  const tx = db.transaction('proveedores', 'readwrite')
+  for (const p of proveedores) tx.store.put(p)
+  await tx.done
+}
+
+export async function getProveedores() {
+  const db = await getDB()
+  return db.getAll('proveedores')
+}
+
+export async function getProveedor(rif) {
+  const db = await getDB()
+  return db.get('proveedores', rif)
+}
+
+export async function countProveedores() {
+  const db = await getDB()
+  return db.count('proveedores')
+}
+
+export async function borrarProveedor(rif) {
+  const db = await getDB()
+  await db.delete('proveedores', rif)
+}
+
 // === Conceptos de retención ISLR ===
 
 export async function saveConceptos(conceptos) {

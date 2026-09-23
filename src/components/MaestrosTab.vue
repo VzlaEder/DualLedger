@@ -189,10 +189,105 @@
       </div>
     </section>
 
-    <section class="card muted-card">
-      <div class="card-title">
-        <h3>Proveedores</h3>
-        <p class="muted">CRUD de proveedores (RIF SENIAT, % retención IVA, concepto ISLR, cuenta contable) en el siguiente incremento.</p>
+    <!-- ===== Proveedores ===== -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">
+          <h3>Proveedores</h3>
+          <p class="muted">RIF validado (Módulo 11) y verificable en línea contra el SENIAT; % de retención IVA, concepto ISLR y cuenta contable asignada.</p>
+        </div>
+        <button class="btn btn-primary" @click="nuevoProveedor">+ Nuevo proveedor</button>
+      </div>
+
+      <div v-if="proveedores.length" class="toolbar">
+        <input v-model="proveedorFiltro" class="search-input" type="search" placeholder="Buscar proveedor (RIF o nombre)…" />
+      </div>
+
+      <div v-if="editando" class="prov-form">
+        <h4>{{ esNuevo ? 'Nuevo proveedor' : 'Editar proveedor' }}</h4>
+        <div class="param-grid">
+          <div class="field">
+            <label>RIF</label>
+            <div class="rif-row">
+              <input v-model="editando.rif" class="field-input mono" placeholder="J500821484" :disabled="!esNuevo" />
+              <button class="btn" :disabled="verificandoRif" @click="verificarRifProveedor">
+                {{ verificandoRif ? 'Verificando…' : 'Verificar SENIAT' }}
+              </button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Razón social / nombre</label>
+            <input v-model="editando.nombre" class="field-input" />
+          </div>
+          <div class="field field-wide">
+            <label>Dirección</label>
+            <input v-model="editando.direccion" class="field-input" />
+          </div>
+          <div class="field">
+            <label>Teléfono</label>
+            <input v-model="editando.telefono" class="field-input" />
+          </div>
+          <div class="field">
+            <label>Retención IVA (%)</label>
+            <select v-model.number="editando.porcentajeRetIva" class="select-input block">
+              <option :value="75">75%</option>
+              <option :value="100">100%</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Concepto ISLR</label>
+            <select v-model="editando.conceptoIslr" class="select-input block">
+              <option value="">— Sin retención —</option>
+              <option v-for="c in conceptosActivos" :key="c.codigo" :value="c.codigo">{{ c.nombre }}</option>
+            </select>
+          </div>
+          <div class="field field-wide">
+            <label>Cuenta contable asignada</label>
+            <AccountSelector
+              v-model="editando.codigoCuenta"
+              :cuentas="cuentas"
+              placeholder="Seleccionar cuenta contable…"
+            />
+          </div>
+          <div class="field">
+            <label>Condición</label>
+            <input v-model="editando.condicion" class="field-input" />
+          </div>
+        </div>
+        <label class="check-line">
+          <input v-model="editando.creditoFiscalNoDeducible" type="checkbox" />
+          Crédito fiscal no deducible (el IVA de este proveedor no es deducible para la empresa)
+        </label>
+        <div class="sug-actions">
+          <button class="btn" @click="cancelarEdicion">Cancelar</button>
+          <button class="btn btn-primary" :disabled="guardandoProveedor" @click="guardarProveedor">
+            {{ guardandoProveedor ? 'Guardando…' : 'Guardar proveedor' }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="proveedoresFiltrados.length" class="table-scroll">
+        <table class="cuentas-table">
+          <thead>
+            <tr><th>RIF</th><th>Proveedor</th><th>Ret. IVA</th><th>Concepto ISLR</th><th>Cuenta</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in proveedoresFiltrados" :key="p.rif">
+              <td class="mono">{{ formatearRif(p.rif) }}</td>
+              <td>{{ p.nombre }} <span v-if="p.condicion" class="cond-muted">({{ p.condicion }})</span></td>
+              <td>{{ p.porcentajeRetIva }}%</td>
+              <td>{{ conceptoNombre(p.conceptoIslr) }}</td>
+              <td class="mono">{{ p.codigoCuenta || '—' }}</td>
+              <td class="row-actions">
+                <button class="btn" @click="editarProveedor(p)">Editar</button>
+                <button class="btn btn-danger" @click="eliminarProveedor(p)">Eliminar</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-else-if="!editando && !proveedores.length" class="empty-state">
+        <p>No hay proveedores todavía. Pulsa «+ Nuevo proveedor» para registrar uno con validación de RIF y cuenta contable.</p>
       </div>
     </section>
   </div>
@@ -208,20 +303,28 @@ import {
   setParametro,
   saveConceptos,
   getConceptos,
+  saveProveedores,
+  getProveedores,
+  borrarProveedor,
   agregarPendiente,
   listPendientes,
   borrarPendiente
 } from '../stores/maestrosDb'
 import { postJson } from '../utils/api'
 import { hasApiKey } from '../utils/apiKey'
+import { validarRif, formatearRif } from '../services/rif'
+import { verificarRifEnSeniat } from '../utils/seniat'
 import { CONCEPTOS_ISLR_SEED } from '../services/conceptosIslr'
 import { sanearCuentasConGemini, auditarConceptosConGemini } from '../services/sanearCatalogo'
 import * as parametrosSvc from '../services/parametros'
+import AccountSelector from './AccountSelector.vue'
 
 const SYNC_HANDLERS = {
   accounts: '/accounts/sync',
   conceptos_islr: '/conceptos_islr/sync',
-  parametros: '/parametros/sync'
+  parametros: '/parametros/sync',
+  proveedores: '/proveedores/sync',
+  proveedores_delete: '/proveedores/delete'
 }
 
 function ordenarCuentas(list) {
@@ -245,7 +348,13 @@ export default {
       conceptos: [],
       hallazgos: [],
       geminiConceptosLoading: false,
-      parametros: parametrosSvc.mergeConDefecto(null)
+      parametros: parametrosSvc.mergeConDefecto(null),
+      proveedores: [],
+      proveedorFiltro: '',
+      editando: null,
+      esNuevo: false,
+      verificandoRif: false,
+      guardandoProveedor: false
     }
   },
   computed: {
@@ -273,12 +382,23 @@ export default {
     },
     seleccionadas() {
       return this.sugerencias.filter(s => this.aceptar[s.codigo])
+    },
+    conceptosActivos() {
+      return this.conceptos.filter(c => c.activo !== false)
+    },
+    proveedoresFiltrados() {
+      const f = this.proveedorFiltro.trim().toLowerCase()
+      if (!f) return this.proveedores
+      return this.proveedores.filter(p =>
+        String(p.rif).toLowerCase().includes(f) || String(p.nombre).toLowerCase().includes(f)
+      )
     }
   },
   async mounted() {
     await this.cargarLocales()
     await this.cargarConceptos()
     await this.cargarConfigParametros()
+    await this.cargarProveedores()
     await this.reintentarPendientes()
   },
   methods: {
@@ -436,6 +556,135 @@ export default {
       } finally {
         this.geminiConceptosLoading = false
       }
+    },
+    // ==== Proveedores ====
+    async cargarProveedores() {
+      const provs = await getProveedores()
+      if (provs && provs.length) this.proveedores = provs
+    },
+    proveedorVacio() {
+      return {
+        rif: '',
+        nombre: '',
+        direccion: '',
+        telefono: '',
+        porcentajeRetIva: 75,
+        conceptoIslr: '',
+        codigoCuenta: '',
+        creditoFiscalNoDeducible: false,
+        condicion: ''
+      }
+    },
+    nuevoProveedor() {
+      this.error = ''
+      this.esNuevo = true
+      this.editando = this.proveedorVacio()
+    },
+    editarProveedor(p) {
+      this.error = ''
+      this.esNuevo = false
+      this.editando = { ...p }
+    },
+    cancelarEdicion() {
+      this.editando = null
+      this.esNuevo = false
+    },
+    async verificarRifProveedor() {
+      const { valido, rif, error } = validarRif(this.editando.rif)
+      if (!valido) {
+        this.error = error
+        return
+      }
+      this.error = ''
+      this.verificandoRif = true
+      try {
+        const data = await verificarRifEnSeniat(rif)
+        this.editando.nombre = data.nombreRazon || this.editando.nombre
+        this.editando.condicion = data.condicion || this.editando.condicion
+        this.notice = `RIF verificado en el SENIAT: ${data.nombreRazon || formatearRif(rif)} (${data.condicion || 'sin condición'}).`
+      } catch (err) {
+        this.error = (err && err.message) || 'No se pudo verificar el RIF'
+      } finally {
+        this.verificandoRif = false
+      }
+    },
+    async guardarProveedor() {
+      const { valido, rif, error } = validarRif(this.editando.rif)
+      if (!valido) {
+        this.error = error
+        return
+      }
+      const nombre = String(this.editando.nombre || '').trim()
+      if (!nombre) {
+        this.error = 'Escribe el nombre o razón social del proveedor.'
+        return
+      }
+      const record = {
+        rif,
+        nombre,
+        direccion: String(this.editando.direccion || '').trim(),
+        telefono: String(this.editando.telefono || '').trim(),
+        porcentajeRetIva: Number(this.editando.porcentajeRetIva) || 75,
+        conceptoIslr: this.editando.conceptoIslr || null,
+        codigoCuenta: this.editando.codigoCuenta || null,
+        creditoFiscalNoDeducible: this.editando.creditoFiscalNoDeducible === true,
+        condicion: String(this.editando.condicion || '').trim()
+      }
+      if (this.esNuevo && this.proveedores.some(p => p.rif === rif)) {
+        this.error = `Ya existe un proveedor con RIF ${formatearRif(rif)}.`
+        return
+      }
+      this.guardandoProveedor = true
+      this.error = ''
+      try {
+        const idx = this.proveedores.findIndex(p => p.rif === rif)
+        if (idx >= 0) this.proveedores[idx] = record
+        else this.proveedores.push(record)
+        await saveProveedores(this.proveedores)
+        this.notice = `Proveedor guardado: ${record.nombre} (${formatearRif(record.rif)}).`
+        await this.sincronizarProveedores()
+        this.editando = null
+        this.esNuevo = false
+      } catch (err) {
+        this.error = (err && err.message) || 'Error al guardar el proveedor'
+      } finally {
+        this.guardandoProveedor = false
+      }
+    },
+    async sincronizarProveedores() {
+      try {
+        const res = await postJson('/proveedores/sync', { proveedores: this.proveedores })
+        this.estadoSync = {
+          kind: 'ok',
+          text: `Proveedores sincronizados (${res.inserted || 0} nuevos, ${res.updated || 0} actualizados).`
+        }
+      } catch (err) {
+        this.estadoSync = {
+          kind: 'warn',
+          text: 'Proveedores guardados localmente; la sincronización se reintentará más tarde.'
+        }
+        await agregarPendiente('proveedores', { proveedores: this.proveedores }, { motivo: 'sync_proveedores' })
+      }
+    },
+    async eliminarProveedor(p) {
+      if (!window.confirm(`¿Eliminar al proveedor ${p.nombre} (${formatearRif(p.rif)})?`)) return
+      this.proveedores = this.proveedores.filter(x => x.rif !== p.rif)
+      await saveProveedores(this.proveedores)
+      await borrarProveedor(p.rif)
+      this.notice = `Proveedor ${p.nombre} eliminado.`
+      if (this.editando && this.editando.rif === p.rif) this.cancelarEdicion()
+      try {
+        const res = await postJson('/proveedores/delete', { rif: [p.rif] })
+        this.estadoSync = { kind: 'ok', text: `Eliminación sincronizada (${res.eliminados} eliminados).` }
+      } catch (err) {
+        this.estadoSync = { kind: 'warn', text: 'Eliminación pendiente de sincronizar con el servidor.' }
+        await agregarPendiente('proveedores_delete', { rif: [p.rif] }, { motivo: 'delete_proveedor' })
+      }
+    },
+    conceptoNombre(codigo) {
+      if (!codigo) return '—'
+      const c = this.conceptos.find(x => x.codigo === codigo)
+      return c ? c.nombre : codigo
     },
     // ==== Parámetros ====
     async cargarConfigParametros() {
@@ -709,4 +958,39 @@ export default {
   color: var(--text-secondary);
   margin-bottom: 4px;
 }
+
+.field-wide { grid-column: 1 / -1; }
+
+.select-input.block { width: 100%; }
+
+.rif-row { display: flex; gap: 8px; }
+.rif-row .field-input { flex: 1; }
+.rif-row .btn { white-space: nowrap; }
+
+.prov-form {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--background);
+}
+
+.prov-form h4 { font-size: 0.9rem; color: var(--text); margin-bottom: 4px; }
+
+.check-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.82rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.cond-muted { color: var(--text-secondary); font-size: 0.78rem; }
+
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+.btn-danger { background: rgba(var(--error-rgb), 0.1); color: var(--error); }
+.btn-danger:hover { background: rgba(var(--error-rgb), 0.18); }
 </style>

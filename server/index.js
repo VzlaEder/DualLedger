@@ -431,6 +431,99 @@ router.get('/conceptos_islr', async (req, res) => {
   }
 })
 
+// === Maestros: Proveedores ===
+
+async function upsertProveedores(proveedores) {
+  let inserted = 0
+  let updated = 0
+  for (const p of proveedores) {
+    const { rows } = await pool.query(
+      `INSERT INTO proveedores (rif, nombre, direccion, telefono, porcentaje_ret_iva, concepto_islr, codigo_cuenta, credito_fiscal_no_deducible, condicion)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (rif) DO UPDATE SET
+         nombre = EXCLUDED.nombre,
+         direccion = EXCLUDED.direccion,
+         telefono = EXCLUDED.telefono,
+         porcentaje_ret_iva = EXCLUDED.porcentaje_ret_iva,
+         concepto_islr = EXCLUDED.concepto_islr,
+         codigo_cuenta = EXCLUDED.codigo_cuenta,
+         credito_fiscal_no_deducible = EXCLUDED.credito_fiscal_no_deducible,
+         condicion = EXCLUDED.condicion
+       RETURNING (xmax = 0) AS is_new`,
+      [p.rif, p.nombre || '', p.direccion || '', p.telefono || '', p.porcentajeRetIva ?? 75, p.conceptoIslr || null, p.codigoCuenta || null, p.creditoFiscalNoDeducible === true, p.condicion || '']
+    )
+    if (rows[0].is_new) inserted++
+    else updated++
+  }
+  return { inserted, updated }
+}
+
+router.post('/proveedores/sync', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  const body = req.body
+  const proveedores = Array.isArray(body) ? body : (body && Array.isArray(body.proveedores) ? body.proveedores : null)
+  if (!proveedores || !proveedores.length) {
+    return res.status(400).json({ ok: false, error: 'Sin proveedores para sincronizar' })
+  }
+  try {
+    const result = await upsertProveedores(proveedores)
+    res.json({ ok: true, ...result })
+  } catch (e) {
+    console.error('[Proveedores] sync error:', e.message)
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.post('/proveedores/delete', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  const body = req.body
+  const rifs = Array.isArray(body) ? body : (body && Array.isArray(body.rif) ? body.rif : null)
+  if (!rifs || !rifs.length) {
+    return res.status(400).json({ ok: false, error: 'Sin RIFs para eliminar' })
+  }
+  try {
+    const { rowCount } = await pool.query('DELETE FROM proveedores WHERE rif = ANY($1::text[])', [rifs])
+    res.json({ ok: true, eliminados: rowCount || 0 })
+  } catch (e) {
+    console.error('[Proveedores] delete error:', e.message)
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.get('/proveedores', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT rif, nombre, direccion, telefono, porcentaje_ret_iva, concepto_islr, codigo_cuenta, credito_fiscal_no_deducible, condicion
+       FROM proveedores
+       ORDER BY nombre`
+    )
+    res.json({
+      ok: true,
+      proveedores: rows.map(r => ({
+        rif: r.rif,
+        nombre: r.nombre,
+        direccion: r.direccion,
+        telefono: r.telefono,
+        porcentajeRetIva: Number(r.porcentaje_ret_iva),
+        conceptoIslr: r.concepto_islr,
+        codigoCuenta: r.codigo_cuenta,
+        creditoFiscalNoDeducible: r.credito_fiscal_no_deducible,
+        condicion: r.condicion
+      }))
+    })
+  } catch (e) {
+    console.error('[Proveedores] list error:', e.message)
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
 // === Maestros: Parámetros (empresa, UT, tasas) ===
 
 async function upsertParametros(parametros) {
