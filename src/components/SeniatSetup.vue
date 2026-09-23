@@ -1,59 +1,52 @@
 <template>
-  <div v-if="open" class="modal-overlay" @click.self="close">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>&#9881; Herramientas — Servicio SENIAT</h3>
-        <button class="modal-close" @click="close">&#10005;</button>
-      </div>
+  <div class="seniat-panel">
+    <p class="modal-subtitle">
+      El servicio SENIAT corre en tu propia infraestructura (proxy local Express con
+      PostgreSQL) y está embebido en la app (ruta <code>/api</code>). Se usa para rellenar
+      la razón social, % de contribución y condición de cada RIF.
+    </p>
 
-      <p class="modal-subtitle">
-        El servicio SENIAT corre en tu propia infraestructura (proxy local Express con
-        PostgreSQL) y está embebido en la app (ruta <code>/api</code>). Se usa para rellenar
-        la razón social, % de contribución y condición de cada RIF.
+    <div class="status-box" v-if="status">
+      <div class="status-line-info">
+        <span :class="['dot', status.ok ? 'dot-ok' : 'dot-err']"></span>
+        <strong>{{ status.ok ? 'Servicio activo' : 'Servicio no disponible' }}</strong>
+      </div>
+      <p class="status-detail" v-if="status.ok">
+        {{ status.service }} — PostgreSQL:
+        <strong :class="status.postgres ? 'text-ok' : 'text-warn'">
+          {{ status.postgres ? 'Conectado' : 'Deshabilitado' }}
+        </strong>
       </p>
-
-      <div class="status-box" v-if="status">
-        <div class="status-line-info">
-          <span :class="['dot', status.ok ? 'dot-ok' : 'dot-err']"></span>
-          <strong>{{ status.ok ? 'Servicio activo' : 'Servicio no disponible' }}</strong>
-        </div>
-        <p class="status-detail" v-if="status.ok">
-          {{ status.service }} — PostgreSQL:
-          <strong :class="status.postgres ? 'text-ok' : 'text-warn'">
-            {{ status.postgres ? 'Conectado' : 'Deshabilitado' }}
-          </strong>
-        </p>
-        <p class="status-detail" v-else>{{ status.error }}</p>
-      </div>
-
-      <div class="field">
-        <label>URL del servicio (opcional)</label>
-        <input v-model="urlOverride" type="text" placeholder="Vacío = proxy local /api" />
-        <small>
-          Déjalo vacío para usar el proxy local embebido (<code>/api</code>). Solo rellénalo si
-          en el futuro apuntas a un backend SENIAT desplegado en tu propio dominio.
-        </small>
-      </div>
-
-      <div class="btn-row">
-        <button class="btn btn-primary" @click="testConnection" :disabled="busy">
-          {{ busy ? 'Comprobando...' : 'Probar conexión' }}
-        </button>
-        <button class="btn btn-outline" @click="saveOverride" :disabled="busy">
-          Guardar URL
-        </button>
-        <button
-          v-if="hasOverride"
-          class="btn btn-text"
-          @click="resetToLocal"
-          :disabled="busy"
-        >
-          Restablecer a local (/api)
-        </button>
-      </div>
-
-      <div v-if="error" class="error-box">&#9888; {{ error }}</div>
+      <p class="status-detail" v-else>{{ status.error }}</p>
     </div>
+
+    <div class="field">
+      <label>URL del servicio (opcional)</label>
+      <input v-model="urlOverride" type="text" placeholder="Vacío = proxy local /api" />
+      <small>
+        Déjalo vacío para usar el proxy local embebido (<code>/api</code>). Solo rellénalo si
+        en el futuro apuntas a un backend SENIAT desplegado en tu propio dominio.
+      </small>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" @click="testConnection" :disabled="busy">
+        {{ busy ? 'Comprobando...' : 'Probar conexión' }}
+      </button>
+      <button class="btn btn-outline" @click="saveOverride" :disabled="busy">
+        Guardar URL
+      </button>
+      <button
+        v-if="hasOverride"
+        class="btn btn-text"
+        @click="resetToLocal"
+        :disabled="busy"
+      >
+        Restablecer a local (/api)
+      </button>
+    </div>
+
+    <div v-if="error" class="error-box">&#9888; {{ error }}</div>
   </div>
 </template>
 
@@ -66,7 +59,6 @@ export default {
   name: 'SeniatSetup',
   data() {
     return {
-      open: false,
       busy: false,
       urlOverride: getWorkerUrl() || '',
       status: null,
@@ -82,19 +74,6 @@ export default {
     }
   },
   methods: {
-    show() {
-      this.urlOverride = getWorkerUrl() || ''
-      this.status = null
-      this.error = ''
-      this.busy = false
-      this.open = true
-    },
-    close() {
-      this.open = false
-      this.busy = false
-      this.status = null
-      this.error = ''
-    },
     async testConnection() {
       this.error = ''
       this.status = null
@@ -136,49 +115,16 @@ export default {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+.seniat-panel {
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 40px 16px;
-  z-index: 9999;
-  overflow-y: auto;
-}
-
-.modal {
-  background: var(--surface);
-  color: var(--text);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  width: 100%;
-  max-width: 520px;
-  padding: 20px;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.modal-header h3 { font-size: 1.05rem; }
-
-.modal-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.1rem;
-  color: var(--text-secondary);
+  flex-direction: column;
+  gap: 10px;
 }
 
 .modal-subtitle {
   font-size: 0.82rem;
   color: var(--text-secondary);
-  margin-bottom: 14px;
+  margin: 0;
   line-height: 1.4;
 }
 
@@ -187,7 +133,6 @@ export default {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
-  margin-bottom: 14px;
   font-size: 0.8rem;
 }
 
@@ -220,7 +165,7 @@ export default {
 .field {
   display: flex;
   flex-direction: column;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 .field label {
@@ -286,7 +231,6 @@ export default {
 }
 
 .error-box {
-  margin-top: 12px;
   background: rgba(var(--error-rgb), 0.08);
   color: var(--error);
   border: 1px solid rgba(var(--error-rgb), 0.4);

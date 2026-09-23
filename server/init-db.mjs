@@ -10,18 +10,14 @@
 // con código 0: la app sigue funcionando, solo sin caché compartida.
 // ============================================================
 
-import { readFileSync } from 'fs'
-import { fileURLToPath } from 'url'
-import { dirname, join } from 'path'
 import { config } from 'dotenv'
 import pg from 'pg'
+import { applySchema, readEnvUrl, ROOT_DIR } from './dbAdmin.mjs'
+import { join } from 'path'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+config({ path: join(ROOT_DIR, '.env') })
 
-// Carga el .env de la raíz del proyecto
-config({ path: join(__dirname, '..', '.env') })
-
-const url = process.env.DATABASE_URL
+const url = readEnvUrl() || process.env.DATABASE_URL
 if (!url) {
   console.warn('[init-db] DATABASE_URL no definido - se omite la inicialización (sin caché compartida)')
   process.exit(0)
@@ -31,8 +27,7 @@ const client = new pg.Client({ connectionString: url })
 
 try {
   await client.connect()
-  const sql = readFileSync(join(__dirname, 'schema.sql'), 'utf8')
-  await client.query(sql)
+  await applySchema(client)
   console.log('[init-db] ✔ Esquema de PostgreSQL aplicado/verificado (tabla rif_cache)')
 
   const { rows } = await client.query('SELECT count(*)::int AS n FROM rif_cache')

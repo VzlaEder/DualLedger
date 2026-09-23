@@ -5,6 +5,8 @@ import { config } from 'dotenv'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { existsSync } from 'fs'
+import * as dbAdmin from './dbAdmin.mjs'
+import * as ed from './exportData.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -24,11 +26,11 @@ const SENIAT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 
 const { Pool } = pg
 
-const databaseUrl = process.env.DATABASE_URL
+const databaseUrl = process.env.DATABASE_URL || dbAdmin.readEnvUrl()
 let pool = null
 
 if (databaseUrl) {
-  pool = new Pool({ connectionString: databaseUrl, max: 5 })
+  pool = dbAdmin.createPool(databaseUrl)
   console.log('[Postgres] Conectado a la base de datos local')
 } else {
   console.warn('[Postgres] No configurado (falta DATABASE_URL) - cache deshabilitado')
@@ -575,6 +577,298 @@ router.get('/parametros', async (req, res) => {
 })
 
 app.use('/api', router)
+
+// ============================================================
+// Rutas administrativas (provisionales, mientras no exista la
+// versión oficial con dominio propio): /api/admin/*
+// ============================================================
+
+// valida la base de datos => 409 cuando Postgres no está levantado
+function requirePool(res) {
+  if (pool) return pool
+  res.status(409).json({ ok: false, code: 'DB_DOWN', error: 'La base de datos no está levantada' })
+  return null
+}
+
+function maskUrl(url) {
+  try {
+    const u = new URL(url)
+    return `${u.protocol}//***:***@${u.host}${u.pathname}`
+  } catch {
+    return 'postgres://***'
+  }
+}
+
+async function poolReady(p) {
+  await p.query('SELECT 1')
+}
+
+router.get('/admin/status', async (req, res) => {
+  let docker = false
+  try { docker = await dbAdmin.dockerAvailable() } catch { docker = false }
+  const body = {
+    ok: true,
+    pool: !!pool,
+    databaseUrlConfigured: !!dbAdmin.readEnvUrl(),
+    docker,
+    tables: null
+  }
+  if (pool) {
+    try { body.tables = await dbAdmin.listTables(pool) }
+    catch (e) { body.tableError = e.message }
+  }
+  res.json(body)
+})
+
+router.post('/admin/db/up', async (req, res) => {
+  if (pool) return res.json({ ok: true, already: true })
+  try {
+    const dockerReady = await dbAdmin.dockerAvailable()
+    if (!dockerReady) {
+      throw new Error('No se encontró Docker en el PATH. Asegúrate de que Docker Desktop esté instalado y encendido.')
+    }
+    await dbAdmin.dockerComposeUp()
+    let url = dbAdmin.readEnvUrl() || process.env.DATABASE_URL
+    if (!url) {
+      url = dbAdmin.DEFAULT_LOCAL_URL
+      dbAdmin.writeEnvUrl(url)
+    }
+    process.env.DATABASE_URL = url
+    pool = dbAdmin.createPool(url)
+    await poolReady(pool)
+    await dbAdmin.applySchema(pool)
+    res.json({ ok: true, docker: true, url: maskUrl(url) })
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      error: String(e.message),
+      hint: 'Puedes levantar Postgres con Docker Desktop o conectar una DATABASE_URL externa desde "Conexión manual".'
+    })
+  }
+})
+
+router.post('/admin/db/down', async (req, res) => {
+  try {
+    await dbAdmin.dockerComposeDown()
+    res.json({ ok: true })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.post('/admin/db/connect', async (req, res) => {
+  const url = (req.body && typeof req.body.url === 'string') ? req.body.url.trim() : ''
+  if (!/^postgres(ql)?:\/\//i.test(url)) {
+    return res.status(400).json({ ok: false, error: 'URL no válida (formato postgres://usuario:clave@host:puerto/bd)' })
+  }
+  try {
+    await dbAdmin.testConnection(url)
+    dbAdmin.writeEnvUrl(url)
+    process.env.DATABASE_URL = url
+    pool = dbAdmin.createPool(url)
+    await poolReady(pool)
+    await dbAdmin.applySchema(pool)
+    res.json({ ok: true, url: maskUrl(url) })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+function parseTableName(req, res) {
+  const name = req.params.name
+  if (!dbAdmin.validName(name)) {
+    res.status(400).json({ ok: false, error: 'Nombre de tabla no válido' })
+    return null
+  }
+  return name
+}
+
+router.get('/admin/tables', async (req, res) => {
+  const p = requirePool(res)
+  if (!p) return
+  try {
+    res.json({ ok: true, tables: await dbAdmin.listTables(p) })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.get('/admin/tables/:name', async (req, res) => {
+  const p = requirePool(res)
+  if (!p) return
+  const name = parseTableName(req, res)
+  if (!name) return
+  try {
+    const info = await dbAdmin.tableInfo(p, name)
+    const total = await dbAdmin.totalRows(p, name)
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500)
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0)
+    const order = typeof req.query.order === 'string' && dbAdmin.validName(req.query.order) ? req.query.order : null
+    const rows = await dbAdmin.fetchRows(p, name, { limit, offset, order })
+    res.json({ ok: true, table: info, total, limit, offset, rows })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.post('/admin/tables/:name/rows', async (req, res) => {
+  const p = requirePool(res)
+  if (!p) return
+  const name = parseTableName(req, res)
+  if (!name) return
+  const row = req.body && req.body.row && typeof req.body.row === 'object' && !Array.isArray(req.body.row)
+    ? req.body.row
+    : (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : null)
+  if (!row) return res.status(400).json({ ok: false, error: 'Fila no válida' })
+  try {
+    const info = await dbAdmin.tableInfo(p, name)
+    const created = await dbAdmin.insertRow(p, info, row)
+    res.status(201).json({ ok: true, row: created })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.put('/admin/tables/:name/rows', async (req, res) => {
+  const p = requirePool(res)
+  if (!p) return
+  const name = parseTableName(req, res)
+  if (!name) return
+  const body = req.body || {}
+  if (!body.key || typeof body.key !== 'object' || !body.row || typeof body.row !== 'object') {
+    return res.status(400).json({ ok: false, error: 'Se esperaba { key: {...}, row: {...} }' })
+  }
+  try {
+    const info = await dbAdmin.tableInfo(p, name)
+    const updated = await dbAdmin.updateRow(p, info, body.key, body.row)
+    if (!updated) return res.status(404).json({ ok: false, error: 'Fila no encontrada' })
+    res.json({ ok: true, row: updated })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.delete('/admin/tables/:name/rows', async (req, res) => {
+  const p = requirePool(res)
+  if (!p) return
+  const name = parseTableName(req, res)
+  if (!name) return
+  const body = req.body || {}
+  const keys = Array.isArray(body)
+    ? body
+    : Array.isArray(body.keys)
+      ? body.keys
+      : body.key
+        ? [body.key]
+        : null
+  if (!keys || !keys.length) return res.status(400).json({ ok: false, error: 'Sin llaves para eliminar' })
+  try {
+    const info = await dbAdmin.tableInfo(p, name)
+    const deleted = await dbAdmin.deleteRows(p, info, keys)
+    res.json({ ok: true, deleted })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.get('/admin/export/:name', async (req, res) => {
+  const p = requirePool(res)
+  if (!p) return
+  const name = parseTableName(req, res)
+  if (!name) return
+  const fmt = String(req.query.fmt || 'csv').toLowerCase()
+  if (!['csv', 'json', 'sql'].includes(fmt)) return res.status(400).json({ ok: false, error: 'Formato no válido (csv, json o sql)' })
+  try {
+    const info = await dbAdmin.tableInfo(p, name)
+    const rows = await dbAdmin.selectAll(p, name)
+    const map = {
+      csv: [ed.rowsToCsv(info.columns, rows), 'text/csv'],
+      json: [ed.rowsToJson(rows), 'application/json'],
+      sql: [ed.rowsToInserts(name, info.columns, rows), 'application/sql']
+    }
+    const [content, ctype] = map[fmt]
+    res.setHeader('Content-Type', `${ctype}; charset=utf-8`)
+    res.setHeader('Content-Disposition', `attachment; filename="${name}.${fmt}"`)
+    res.send(content)
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.get('/admin/export/all', async (req, res) => {
+  const p = requirePool(res)
+  if (!p) return
+  const fmt = String(req.query.fmt || 'sql').toLowerCase()
+  if (!['json', 'sql'].includes(fmt)) return res.status(400).json({ ok: false, error: 'Formato no válido (json o sql)' })
+  try {
+    const lists = await dbAdmin.listTables(p)
+    const tables = []
+    for (const t of lists) {
+      const info = await dbAdmin.tableInfo(p, t.name)
+      const rows = await dbAdmin.selectAll(p, t.name)
+      tables.push({ ...info, rows })
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    if (fmt === 'json') {
+      const obj = {}
+      for (const t of tables) obj[t.name] = t.rows
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="dualledger-export-${stamp}.json"`)
+      res.send(ed.rowsToJson(obj))
+    } else {
+      res.setHeader('Content-Type', 'application/sql; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="dualledger-export-${stamp}.sql"`)
+      res.send(ed.catalogToSql(tables))
+    }
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.post('/admin/import/:name', async (req, res) => {
+  const p = requirePool(res)
+  if (!p) return
+  const name = parseTableName(req, res)
+  if (!name) return
+  const fmt = String((req.body && req.body.fmt) || '').toLowerCase()
+  const content = String((req.body && req.body.content) || '')
+  if (!['csv', 'json'].includes(fmt)) return res.status(400).json({ ok: false, error: 'Formato no válido (csv o json)' })
+  try {
+    const info = await dbAdmin.tableInfo(p, name)
+    let rows
+    if (fmt === 'csv') {
+      const parsed = ed.parseCsv(content)
+      const known = new Set(info.columns.map((c) => c.name))
+      const bad = parsed.columns.filter((c) => !known.has(c))
+      if (bad.length) return res.status(400).json({ ok: false, error: `Columnas desconocidas en el CSV: ${bad.join(', ')}` })
+      rows = parsed.rows.map((arr) => {
+        const o = {}
+        parsed.columns.forEach((c, i) => { o[c] = arr[i] })
+        return o
+      })
+    } else {
+      rows = ed.parseJsonContent(content, false).rows
+    }
+    const imported = await dbAdmin.upsertRows(p, info, rows)
+    res.json({ ok: true, imported })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.post('/admin/import/sql', async (req, res) => {
+  const p = requirePool(res)
+  if (!p) return
+  const content = String((req.body && req.body.content) || '')
+  if (!content.trim()) return res.status(400).json({ ok: false, error: 'Script vacío' })
+  if (content.length > 50 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'Script demasiado grande' })
+  try {
+    await p.query(content)
+    res.json({ ok: true })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message).slice(0, 500) })
+  }
+})
 
 // === Servido del build de producción (dist/) ===
 // Solo cuando el proceso se ejecuta de forma independiente (no como middleware de Vite):

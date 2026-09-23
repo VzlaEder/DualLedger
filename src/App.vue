@@ -14,8 +14,8 @@
         <div class="header-actions">
           <button
             class="tools-toggle"
-            @click="openSeniatSetup"
-            title="Herramientas: configurar servicio SENIAT"
+            @click="openHerramientas"
+            title="Herramientas: servicio SENIAT y base de datos"
           >
             &#9881;
           </button>
@@ -115,9 +115,17 @@
       <MaestrosTab
         v-if="currentTab === 'maestros'"
       />
+
+      <DataExplorer
+        v-if="currentTab === 'datos'"
+        @open-tools="openHerramientas"
+      />
     </main>
 
-    <SeniatSetup ref="seniatSetupRef" />
+    <HerramientasModal
+      ref="toolsRef"
+      @open-data="currentTab = 'datos'"
+    />
 
     <DialogHost />
     <ToastHost />
@@ -139,7 +147,8 @@ import DataPreview from './components/DataPreview.vue'
 import ExcelExport from './components/ExcelExport.vue'
 import History from './components/History.vue'
 import ApiKeySetup from './components/ApiKeySetup.vue'
-import SeniatSetup from './components/SeniatSetup.vue'
+import HerramientasModal from './components/HerramientasModal.vue'
+import DataExplorer from './components/DataExplorer.vue'
 import DialogHost from './components/DialogHost.vue'
 import ToastHost from './components/ToastHost.vue'
 import MaestrosTab from './components/MaestrosTab.vue'
@@ -184,7 +193,7 @@ function emptyRecord(nro) {
 
 export default {
   name: 'App',
-  components: { ImageUploader, DataPreview, ExcelExport, History, ApiKeySetup, SeniatSetup, DialogHost, ToastHost, MaestrosTab },
+  components: { ImageUploader, DataPreview, ExcelExport, History, ApiKeySetup, HerramientasModal, DataExplorer, DialogHost, ToastHost, MaestrosTab },
   data() {
     return {
       brandLogo,
@@ -194,7 +203,8 @@ export default {
         { id: 'preview', label: 'Datos', icon: '&#128203;' },
         { id: 'export', label: 'Exportar', icon: '&#128229;' },
         { id: 'history', label: 'Historial', icon: '&#128218;' },
-        { id: 'maestros', label: 'Maestros', icon: '&#128220;' }
+        { id: 'maestros', label: 'Maestros', icon: '&#128220;' },
+        { id: 'datos', label: 'BD', icon: '&#128451;' }
       ],
       records: [],
       rawTexts: [],
@@ -473,9 +483,9 @@ if (controller.signal.aborted) break
       }
     },
 
-    openSeniatSetup() {
-      if (this.$refs.seniatSetupRef) {
-        this.$refs.seniatSetupRef.show()
+    openHerramientas() {
+      if (this.$refs.toolsRef) {
+        this.$refs.toolsRef.show()
       }
     }
   }
