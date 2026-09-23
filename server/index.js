@@ -293,6 +293,194 @@ router.post('/verify', async (req, res) => {
   }
 })
 
+// === Maestros: Plan de Cuentas Contables ===
+
+async function upsertCuentas(cuentas) {
+  let inserted = 0
+  let updated = 0
+  for (const c of cuentas) {
+    const { rows } = await pool.query(
+      `INSERT INTO cuentas_contables
+         (codigo, nombre, nivel, codigo_padre, grupo, grupo_nombre, es_movimiento, saldo_inicial, debe, haber, saldo_final)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (codigo) DO UPDATE SET
+         nombre = EXCLUDED.nombre,
+         nivel = EXCLUDED.nivel,
+         codigo_padre = EXCLUDED.codigo_padre,
+         grupo = EXCLUDED.grupo,
+         grupo_nombre = EXCLUDED.grupo_nombre,
+         es_movimiento = EXCLUDED.es_movimiento,
+         saldo_inicial = EXCLUDED.saldo_inicial,
+         debe = EXCLUDED.debe,
+         haber = EXCLUDED.haber,
+         saldo_final = EXCLUDED.saldo_final
+       RETURNING (xmax = 0) AS is_new`,
+      [
+        c.codigo, c.nombre, c.nivel,
+        c.codigoPadre || '', c.grupo || '', c.grupoNombre || '',
+        !!c.esMovimiento,
+        c.saldoInicial || 0, c.debe || 0, c.haber || 0, c.saldoFinal || 0
+      ]
+    )
+    if (rows[0].is_new) inserted++
+    else updated++
+  }
+  return { inserted, updated }
+}
+
+router.post('/accounts/sync', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  const body = req.body
+  const cuentas = Array.isArray(body) ? body : (body && Array.isArray(body.cuentas) ? body.cuentas : null)
+  if (!cuentas || !cuentas.length) {
+    return res.status(400).json({ ok: false, error: 'Sin cuentas para sincronizar' })
+  }
+  try {
+    const result = await upsertCuentas(cuentas)
+    res.json({ ok: true, ...result })
+  } catch (e) {
+    console.error('[Accounts] sync error:', e.message)
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.get('/accounts', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT codigo, nombre, nivel, codigo_padre, grupo, grupo_nombre, es_movimiento,
+              saldo_inicial, debe, haber, saldo_final
+       FROM cuentas_contables
+       ORDER BY codigo`
+    )
+    res.json({ ok: true, cuentas: rows })
+  } catch (e) {
+    console.error('[Accounts] list error:', e.message)
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+// === Maestros: Conceptos de Retención ISLR ===
+
+async function upsertConceptos(conceptos) {
+  let inserted = 0
+  let updated = 0
+  for (const c of conceptos) {
+    const { rows } = await pool.query(
+      `INSERT INTO conceptos_islr (codigo, nombre, porcentaje, sustraendo_ut, base_minima_ut, activo)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (codigo) DO UPDATE SET
+         nombre = EXCLUDED.nombre,
+         porcentaje = EXCLUDED.porcentaje,
+         sustraendo_ut = EXCLUDED.sustraendo_ut,
+         base_minima_ut = EXCLUDED.base_minima_ut,
+         activo = EXCLUDED.activo
+       RETURNING (xmax = 0) AS is_new`,
+      [c.codigo, c.nombre, c.porcentaje, c.sustraendoUt || 0, c.baseMinimaUt || 0, c.activo !== false]
+    )
+    if (rows[0].is_new) inserted++
+    else updated++
+  }
+  return { inserted, updated }
+}
+
+router.post('/conceptos_islr/sync', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  const body = req.body
+  const conceptos = Array.isArray(body) ? body : (body && Array.isArray(body.conceptos) ? body.conceptos : null)
+  if (!conceptos || !conceptos.length) {
+    return res.status(400).json({ ok: false, error: 'Sin conceptos para sincronizar' })
+  }
+  try {
+    const result = await upsertConceptos(conceptos)
+    res.json({ ok: true, ...result })
+  } catch (e) {
+    console.error('[ConceptosISLR] sync error:', e.message)
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.get('/conceptos_islr', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  try {
+    const { rows } = await pool.query(
+      'SELECT codigo, nombre, porcentaje, sustraendo_ut, base_minima_ut, activo FROM conceptos_islr ORDER BY codigo'
+    )
+    res.json({
+      ok: true,
+      conceptos: rows.map(r => ({
+        codigo: r.codigo,
+        nombre: r.nombre,
+        porcentaje: Number(r.porcentaje),
+        sustraendoUt: Number(r.sustraendo_ut),
+        baseMinimaUt: Number(r.base_minima_ut),
+        activo: r.activo
+      }))
+    })
+  } catch (e) {
+    console.error('[ConceptosISLR] list error:', e.message)
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+// === Maestros: Parámetros (empresa, UT, tasas) ===
+
+async function upsertParametros(parametros) {
+  let inserted = 0
+  let updated = 0
+  for (const p of parametros) {
+    const { rows } = await pool.query(
+      `INSERT INTO parametros (clave, valor)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor
+       RETURNING (xmax = 0) AS is_new`,
+      [p.clave, JSON.stringify(p.valor || {})]
+    )
+    if (rows[0].is_new) inserted++
+    else updated++
+  }
+  return { inserted, updated }
+}
+
+router.post('/parametros/sync', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  const body = req.body
+  const parametros = Array.isArray(body) ? body : (body && Array.isArray(body.parametros) ? body.parametros : null)
+  if (!parametros || !parametros.length) {
+    return res.status(400).json({ ok: false, error: 'Sin parámetros para sincronizar' })
+  }
+  try {
+    const result = await upsertParametros(parametros)
+    res.json({ ok: true, ...result })
+  } catch (e) {
+    console.error('[Parametros] sync error:', e.message)
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.get('/parametros', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  try {
+    const { rows } = await pool.query('SELECT clave, valor FROM parametros')
+    res.json({ ok: true, parametros: rows.map(r => ({ clave: r.clave, valor: r.valor })) })
+  } catch (e) {
+    console.error('[Parametros] list error:', e.message)
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
 app.use('/api', router)
 
 // === Servido del build de producción (dist/) ===

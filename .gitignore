@@ -10,3 +10,6 @@ devweb.log
 devweb.err.log
 worker/.wrangler/
 worker/e2e.json
+*.xls
+*.xlsx
+MANUAL DE PROCEDIMINETO MODULO COMPRAS.pdf

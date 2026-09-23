@@ -111,6 +111,10 @@
         v-if="currentTab === 'history'"
         ref="historyRef"
       />
+
+      <MaestrosTab
+        v-if="currentTab === 'maestros'"
+      />
     </main>
 
     <SeniatSetup ref="seniatSetupRef" />
@@ -138,6 +142,7 @@ import ApiKeySetup from './components/ApiKeySetup.vue'
 import SeniatSetup from './components/SeniatSetup.vue'
 import DialogHost from './components/DialogHost.vue'
 import ToastHost from './components/ToastHost.vue'
+import MaestrosTab from './components/MaestrosTab.vue'
 import brandLogo from './assets/logo/DualLedger.svg'
 import { processImage, expandFile } from './utils/ocr.js'
 import { hasApiKey } from './utils/apiKey.js'
@@ -179,7 +184,7 @@ function emptyRecord(nro) {
 
 export default {
   name: 'App',
-  components: { ImageUploader, DataPreview, ExcelExport, History, ApiKeySetup, SeniatSetup, DialogHost, ToastHost },
+  components: { ImageUploader, DataPreview, ExcelExport, History, ApiKeySetup, SeniatSetup, DialogHost, ToastHost, MaestrosTab },
   data() {
     return {
       brandLogo,
@@ -188,7 +193,8 @@ export default {
         { id: 'upload', label: 'Subir', icon: '&#128228;' },
         { id: 'preview', label: 'Datos', icon: '&#128203;' },
         { id: 'export', label: 'Exportar', icon: '&#128229;' },
-        { id: 'history', label: 'Historial', icon: '&#128218;' }
+        { id: 'history', label: 'Historial', icon: '&#128218;' },
+        { id: 'maestros', label: 'Maestros', icon: '&#128220;' }
       ],
       records: [],
       rawTexts: [],
