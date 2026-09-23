@@ -115,17 +115,20 @@
       <MaestrosTab
         v-if="currentTab === 'maestros'"
       />
-
-      <DataExplorer
-        v-if="currentTab === 'datos'"
-        @open-tools="openHerramientas"
-      />
     </main>
 
     <HerramientasModal
       ref="toolsRef"
-      @open-data="currentTab = 'datos'"
+      @open-data="openDataExplorer"
     />
+
+    <div v-if="dataExplorerOpen" class="de-overlay">
+      <div class="de-overlay-bar">
+        <span class="de-overlay-title">&#128451; Base de datos — Explorador</span>
+        <button class="de-overlay-close" @click="closeDataExplorer">&#10005; Cerrar</button>
+      </div>
+      <DataExplorer @open-tools="openHerramientas" />
+    </div>
 
     <DialogHost />
     <ToastHost />
@@ -198,13 +201,13 @@ export default {
     return {
       brandLogo,
       currentTab: 'upload',
+      dataExplorerOpen: false,
       tabs: [
         { id: 'upload', label: 'Subir', icon: '&#128228;' },
         { id: 'preview', label: 'Datos', icon: '&#128203;' },
         { id: 'export', label: 'Exportar', icon: '&#128229;' },
         { id: 'history', label: 'Historial', icon: '&#128218;' },
-        { id: 'maestros', label: 'Maestros', icon: '&#128220;' },
-        { id: 'datos', label: 'BD', icon: '&#128451;' }
+        { id: 'maestros', label: 'Maestros', icon: '&#128220;' }
       ],
       records: [],
       rawTexts: [],
@@ -487,6 +490,14 @@ if (controller.signal.aborted) break
       if (this.$refs.toolsRef) {
         this.$refs.toolsRef.show()
       }
+    },
+
+    openDataExplorer() {
+      this.dataExplorerOpen = true
+    },
+
+    closeDataExplorer() {
+      this.dataExplorerOpen = false
     }
   }
 }
@@ -849,5 +860,43 @@ html, body {
   .app-title { font-size: 1.2rem; }
   .brand-logo { width: 38px; height: 38px; font-size: 1.2rem; }
   .install-btn { font-size: 0.68rem; padding: 6px 8px; }
+}
+
+.de-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: var(--background);
+  overflow-y: auto;
+  padding: 14px 18px 28px;
+}
+
+.de-overlay-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.de-overlay-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.de-overlay-close {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.de-overlay-close:hover {
+  border-color: var(--error);
+  color: var(--error);
 }
 </style>

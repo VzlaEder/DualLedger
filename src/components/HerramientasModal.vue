@@ -61,7 +61,7 @@
             <button class="btn btn-outline" @click="stopDb" :disabled="dbBusy || !db.pool">
               &#9660; Detener
             </button>
-            <button class="btn btn-outline" @click="openData" :disabled="!db.pool">
+            <button class="btn btn-outline" @click="openData">
               &#128451; Ver datos
             </button>
           </div>
@@ -181,6 +181,13 @@ export default {
       }
     },
     openData() {
+      if (!this.db.pool) {
+        showToast('La base de datos aún no está levantada. Púlsala primero con "⬆ Levantar base de datos".', {
+          type: 'info',
+          duration: 4500
+        })
+        return
+      }
       this.close()
       this.$emit('open-data')
     }
