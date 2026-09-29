@@ -126,7 +126,7 @@ CREATE TRIGGER update_proveedores_updated_at
 -- Parámetros genéricos en JSONB (empresa, unidad tributaria, tasas, meta de importación)
 CREATE TABLE IF NOT EXISTS parametros (
   clave TEXT PRIMARY KEY,
-  valor JSONB NOT NULL DEFAULT '{}::jsonb',
+  valor JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS compras (
   fecha TEXT NOT NULL DEFAULT '',
   rif TEXT NOT NULL DEFAULT '',
   proveedor TEXT NOT NULL DEFAULT '',
-  payload JSONB NOT NULL DEFAULT '{}::jsonb',
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
