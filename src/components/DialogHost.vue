@@ -147,4 +147,23 @@ export default {
 .dialog-btn-primary:hover { opacity: 0.9; }
 
 .dialog-btn-primary.danger { background: var(--error); }
+
+@media (max-width: 480px) {
+  .dialog-backdrop {
+    padding: 12px;
+  }
+
+  .dialog-card {
+    padding: 18px 16px 14px;
+  }
+
+  .dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  .dialog-btn {
+    width: 100%;
+    padding: 12px 14px;
+  }
+}
 </style>

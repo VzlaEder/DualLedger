@@ -279,4 +279,19 @@ export default {
 }
 
 .settings-btn:hover { opacity: 1; }
+
+@media (max-width: 600px) {
+  .key-input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .setup-label {
+    white-space: normal;
+  }
+
+  .btn {
+    padding: 10px 14px;
+  }
+}
 </style>

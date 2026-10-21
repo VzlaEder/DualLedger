@@ -64,7 +64,7 @@
             </svg>
           </button>
           <button
-            v-if="canInstall"
+            v-if="showInstall"
             class="install-btn"
             @click="installApp"
             title="Instalar app en escritorio"
@@ -151,6 +151,7 @@ import DialogHost from './DialogHost.vue'
 import ToastHost from './ToastHost.vue'
 import brandLogo from '../assets/logo/DualLedger.svg'
 import { state, logout } from '../utils/auth.js'
+import { showToast } from '../utils/dialog.js'
 import { hasApiKey } from '../utils/apiKey.js'
 import { isSoundEnabled, setSoundEnabled, unlockAudio, playCompletionSound } from '../utils/sound.js'
 
@@ -213,6 +214,8 @@ export default {
       dataExplorerOpen: false,
       canInstall: false,
       deferredPrompt: null,
+      isIos: false,
+      standalone: false,
       hasApiKey: hasApiKey(),
       theme: 'light',
       soundOn: isSoundEnabled()
@@ -222,6 +225,9 @@ export default {
     visibleModules() {
       const isAdmin = this.state.currentUser && this.state.currentUser.rol === 'Administrador'
       return this.modules.filter((m) => (m.id === 'config' ? isAdmin : true))
+    },
+    showInstall() {
+      return this.canInstall || (this.isIos && !this.standalone)
     }
   },
   watch: {
@@ -232,6 +238,7 @@ export default {
   mounted() {
     this.syncExpanded()
     this.applyInitialTheme()
+    this.detectPlatform()
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault()
       this.deferredPrompt = e
@@ -243,6 +250,21 @@ export default {
     })
   },
   methods: {
+    detectPlatform() {
+      const ua = navigator.userAgent || ''
+      this.isIos = /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+      this.standalone =
+        window.navigator.standalone === true ||
+        (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      if (this.isIos && !this.standalone && !sessionStorage.getItem('dualledger-ios-hint')) {
+        sessionStorage.setItem('dualledger-ios-hint', '1')
+        showToast('Para instalarla en iPhone: Comparte > Añadir a pantalla de inicio', {
+          type: 'info',
+          duration: 8000
+        })
+      }
+    },
     baseOf(m) {
       if (m.children.length) {
         const first = m.children[0].path
@@ -304,7 +326,15 @@ export default {
     },
 
     async installApp() {
-      if (!this.deferredPrompt) return
+      if (!this.deferredPrompt) {
+        if (this.isIos) {
+          showToast('En iPhone o iPad: toca Compartir y luego "Añadir a pantalla de inicio"', {
+            type: 'info',
+            duration: 8000
+          })
+        }
+        return
+      }
       this.deferredPrompt.prompt()
       const { outcome } = await this.deferredPrompt.userChoice
       if (outcome === 'accepted') {
@@ -443,7 +473,7 @@ html, body {
 .app-header {
   background: linear-gradient(135deg, var(--primary), var(--primary-light));
   color: white;
-  padding: 12px 16px 0;
+  padding: calc(12px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 0 calc(16px + env(safe-area-inset-left));
   position: sticky;
   top: 0;
   z-index: 100;
@@ -757,13 +787,22 @@ html, body {
 .content-area {
   flex: 1;
   min-width: 0;
-  padding: 16px;
+  padding: 16px calc(16px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
 }
 
 /* ===== Responsive ===== */
+@media (max-width: 600px) {
+  .app-subtitle { display: none; }
+  .app-title { font-size: 1.15rem; }
+  .brand-logo { width: 36px; height: 36px; }
+  .header-top { gap: 8px; }
+  .content-area { padding-top: 12px; }
+  .install-btn { font-size: 0.68rem; padding: 6px 9px; }
+}
+
 @media (max-width: 480px) {
   .app-title { font-size: 1.2rem; }
   .brand-logo { width: 38px; height: 38px; font-size: 1.2rem; }
@@ -784,6 +823,10 @@ html, body {
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     box-shadow: var(--shadow-lg);
+    padding-top: calc(12px + env(safe-area-inset-top));
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    padding-left: calc(10px + env(safe-area-inset-left));
+    width: min(280px, 82vw);
   }
 
   .sidebar.open {
@@ -796,6 +839,22 @@ html, body {
     inset: 0;
     background: rgba(0, 0, 0, 0.4);
     z-index: -1;
+  }
+}
+
+/* Targets tactiles (moviles/tablets) */
+@media (pointer: coarse) {
+  .sidebar-module,
+  .sidebar-child {
+    min-height: 44px;
+  }
+
+  .theme-toggle,
+  .sound-toggle,
+  .tools-toggle,
+  .menu-toggle {
+    width: 42px;
+    height: 42px;
   }
 }
 

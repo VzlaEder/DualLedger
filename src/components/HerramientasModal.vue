@@ -402,4 +402,31 @@ export default {
 code {
   font-family: monospace;
 }
+
+@media (max-width: 600px) {
+  .modal-overlay {
+    padding: calc(12px + env(safe-area-inset-top)) 10px calc(12px + env(safe-area-inset-bottom));
+    align-items: flex-start;
+  }
+
+  .modal {
+    padding: 16px;
+  }
+
+  .tools-nav {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .tools-nav::-webkit-scrollbar { display: none; }
+
+  .tools-tab {
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+
+  .btn {
+    padding: 10px 12px;
+  }
+}
 </style>

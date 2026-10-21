@@ -565,4 +565,18 @@ export default {
   font-size: 0.78rem;
   font-weight: 500;
 }
+
+@media (max-width: 600px) {
+  .drop-zone {
+    margin: 10px;
+    min-height: 140px;
+  }
+
+  .upload-placeholder { padding: 18px; }
+  .upload-icon { font-size: 2.4rem; }
+  .queue-section { padding: 0 10px 12px; }
+  .tips-card { padding: 14px; }
+  .preview-modal { padding: 10px; }
+  .preview-modal-inner { padding: 8px; }
+}
 </style>

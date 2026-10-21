@@ -1003,4 +1003,19 @@ export default {
 }
 
 @keyframes de-rotate { to { transform: rotate(360deg); } }
+
+@media (max-width: 900px) {
+  .de-layout {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .de-sidebar {
+    max-height: 180px;
+  }
+
+  .de-table {
+    min-width: 620px;
+  }
+}
 </style>
