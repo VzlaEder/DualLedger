@@ -1,0 +1,13 @@
+# Cloudflare (Workers Static Assets / Pages) - frontend DualLedger
+# La app es una SPA (Vue + vue-router en modo hash) servida como assets
+# estaticos. El API y el Worker de SENIAT se despliegan aparte.
+name = "dualledger"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
+[observability]
+enabled = true
