@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
   plugins: [
     vue(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       installPrompt: true,
       includeAssets: [
         'favicon.ico',

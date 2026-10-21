@@ -79,6 +79,9 @@
     <div class="app-body">
       <aside class="sidebar" :class="{ open: sidebarOpen }">
         <div v-if="sidebarOpen" class="sidebar-backdrop" @click="closeSidebarMobile"></div>
+        <button class="sidebar-expand-all" @click="toggleAll" :title="allExpanded ? 'Contraer todo' : 'Expandir todo'">
+          <span>{{ allExpanded ? '&#12805; Contraer todo' : '&#12806; Expandir todo' }}</span>
+        </button>
         <nav class="sidebar-nav">
           <template v-for="m in visibleModules" :key="m.id">
             <button
@@ -233,6 +236,10 @@ export default {
       if (this.standalone) return false
       if (this.canInstall) return true
       return this.isIos || this.isAndroid
+    },
+    allExpanded() {
+      const withChildren = this.modules.filter((m) => m.children.length)
+      return withChildren.length > 0 && withChildren.every((m) => this.expanded[m.id])
     }
   },
   watch: {
@@ -333,10 +340,20 @@ export default {
 
     selectModule(m) {
       if (m.children.length) {
+        // Solo expande: en movil el drawer debe seguir abierto para poder
+        // ver (y hacer scroll) las subopciones.
         this.expanded[m.id] = !this.expanded[m.id]
-        this.closeSidebarMobile()
       } else {
         this.go(m.path)
+      }
+    },
+
+    toggleAll() {
+      const target = !this.allExpanded
+      for (const m of this.modules) {
+        if (m.children.length) {
+          this.expanded[m.id] = target
+        }
       }
     },
 
@@ -646,6 +663,27 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.sidebar-expand-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sidebar-expand-all:hover {
+  color: var(--primary);
+  border-color: var(--primary);
 }
 
 .sidebar-module {
