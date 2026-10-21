@@ -77,8 +77,8 @@
     </header>
 
     <div class="app-body">
+      <div v-if="sidebarOpen" class="sidebar-backdrop" @click="closeSidebarMobile"></div>
       <aside class="sidebar" :class="{ open: sidebarOpen }">
-        <div v-if="sidebarOpen" class="sidebar-backdrop" @click="closeSidebarMobile"></div>
         <button class="sidebar-expand-all" @click="toggleAll" :title="allExpanded ? 'Contraer todo' : 'Expandir todo'">
           <span>{{ allExpanded ? '&#12805; Contraer todo' : '&#12806; Expandir todo' }}</span>
         </button>
@@ -938,7 +938,8 @@ html, body {
     height: 100vh;
     height: 100dvh;
     max-height: 100dvh;
-    z-index: 90;
+    /* Por encima del header (z-index 100): si no, el drawer queda detras */
+    z-index: 200;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     box-shadow: var(--shadow-lg);
@@ -968,8 +969,9 @@ html, body {
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: -1;
+    background: rgba(0, 0, 0, 0.45);
+    /* Entre el header (100) y el drawer (200) */
+    z-index: 150;
   }
 }
 
