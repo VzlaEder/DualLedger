@@ -67,9 +67,9 @@
             v-if="showInstall"
             class="install-btn"
             @click="installApp"
-            title="Instalar app en escritorio"
+            title="Instalar app en este dispositivo"
           >
-            &#128228; Instalar App
+            <span class="install-icon">&#128228;</span><span class="install-label"> Instalar App</span>
           </button>
         </div>
       </div>
@@ -219,7 +219,9 @@ export default {
       deferredPrompt: null,
       isIos: false,
       isAndroid: false,
+      isHuaweiBrowser: false,
       standalone: false,
+      installed: false,
       swRegistered: false,
       swMissing: false,
       hasApiKey: hasApiKey(),
@@ -233,7 +235,7 @@ export default {
       return this.modules.filter((m) => (m.id === 'config' ? isAdmin : true))
     },
     showInstall() {
-      if (this.standalone) return false
+      if (this.standalone || this.installed) return false
       if (this.canInstall) return true
       return this.isIos || this.isAndroid
     },
@@ -257,20 +259,48 @@ export default {
       this.canInstall = true
     })
     window.addEventListener('appinstalled', () => {
+      this.markInstalled()
+    })
+    // Si el usuario abre la app instalada, el modo cambia a standalone.
+    if (window.matchMedia) {
+      const mq = window.matchMedia('(display-mode: standalone)')
+      const onMode = (e) => {
+        this.standalone = e.matches
+        if (e.matches) this.markInstalled()
+      }
+      if (mq.addEventListener) mq.addEventListener('change', onMode)
+      else if (mq.addListener) mq.addListener(onMode)
+    }
+  },
+  methods: {
+    markInstalled() {
       this.canInstall = false
       this.deferredPrompt = null
       this.standalone = true
-    })
-  },
-  methods: {
+      this.installed = true
+      try {
+        localStorage.setItem('dualledger-installed', '1')
+      } catch {
+        /* modo privado: se ignora */
+      }
+    },
     detectPlatform() {
       const ua = navigator.userAgent || ''
       this.isIos = /iPad|iPhone|iPod/.test(ua) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
       this.isAndroid = /Android/i.test(ua)
+      this.isHuaweiBrowser = /HuaweiBrowser|HuaWei|HonorBrowser/i.test(ua)
       this.standalone =
         window.navigator.standalone === true ||
         (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      try {
+        this.installed = localStorage.getItem('dualledger-installed') === '1'
+      } catch {
+        this.installed = false
+      }
+      if (this.standalone) {
+        this.installed = true
+      }
       this.checkServiceWorker()
       if (this.isIos && !this.standalone && !sessionStorage.getItem('dualledger-ios-hint')) {
         sessionStorage.setItem('dualledger-ios-hint', '1')
@@ -301,6 +331,9 @@ export default {
     installHint() {
       if (this.isIos) {
         return 'En iPhone o iPad: toca Compartir y luego "Añadir a pantalla de inicio"'
+      }
+      if (this.isHuaweiBrowser) {
+        return 'En el navegador de Huawei/Honor: menu (3 puntos) > Añadir a pantalla de inicio'
       }
       if (this.swMissing) {
         return 'Recarga la pagina para activar la instalacion. Luego usa el menu > Instalar aplicacion'
@@ -537,7 +570,14 @@ html, body {
   margin-bottom: 6px;
 }
 
-.header-content { text-align: center; flex: 1; }
+.header-content { text-align: center; flex: 1; min-width: 0; }
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 
 .brand-row {
   display: inline-flex;
@@ -555,13 +595,16 @@ html, body {
   object-fit: cover;
 }
 
-.brand-text { text-align: left; }
+.brand-text { text-align: left; min-width: 0; }
 
 .app-title {
   font-size: 1.4rem;
   font-weight: 700;
   letter-spacing: 0.5px;
   line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .icon { font-size: 1.2rem; }
@@ -871,7 +914,10 @@ html, body {
   .brand-logo { width: 36px; height: 36px; }
   .header-top { gap: 8px; }
   .content-area { padding-top: 12px; }
-  .install-btn { font-size: 0.68rem; padding: 6px 9px; }
+  /* Solo el icono: el texto empujaba el boton fuera de la pantalla */
+  .install-btn { font-size: 1rem; padding: 9px 11px; }
+  .install-btn .install-label { display: none; }
+  .install-icon { line-height: 1; }
 }
 
 @media (max-width: 480px) {
