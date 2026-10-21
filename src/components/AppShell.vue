@@ -215,7 +215,10 @@ export default {
       canInstall: false,
       deferredPrompt: null,
       isIos: false,
+      isAndroid: false,
       standalone: false,
+      swRegistered: false,
+      swMissing: false,
       hasApiKey: hasApiKey(),
       theme: 'light',
       soundOn: isSoundEnabled()
@@ -227,7 +230,9 @@ export default {
       return this.modules.filter((m) => (m.id === 'config' ? isAdmin : true))
     },
     showInstall() {
-      return this.canInstall || (this.isIos && !this.standalone)
+      if (this.standalone) return false
+      if (this.canInstall) return true
+      return this.isIos || this.isAndroid
     }
   },
   watch: {
@@ -247,6 +252,7 @@ export default {
     window.addEventListener('appinstalled', () => {
       this.canInstall = false
       this.deferredPrompt = null
+      this.standalone = true
     })
   },
   methods: {
@@ -254,9 +260,11 @@ export default {
       const ua = navigator.userAgent || ''
       this.isIos = /iPad|iPhone|iPod/.test(ua) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+      this.isAndroid = /Android/i.test(ua)
       this.standalone =
         window.navigator.standalone === true ||
         (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      this.checkServiceWorker()
       if (this.isIos && !this.standalone && !sessionStorage.getItem('dualledger-ios-hint')) {
         sessionStorage.setItem('dualledger-ios-hint', '1')
         showToast('Para instalarla en iPhone: Comparte > Añadir a pantalla de inicio', {
@@ -264,6 +272,33 @@ export default {
           duration: 8000
         })
       }
+    },
+    // Chrome solo dispara beforeinstallprompt si el SW esta registrado y la
+    // app cumple los criterios. Si falta, avisamos para que recarguen.
+    async checkServiceWorker() {
+      if (!('serviceWorker' in navigator)) return
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations()
+        this.swRegistered = regs.length > 0
+        // navigator.serviceWorker.ready resuelve cuando hay un SW activo
+        // para el scope: sin eso Chrome no habilita la instalacion.
+        const active = await Promise.race([
+          navigator.serviceWorker.ready.then(() => true),
+          new Promise((resolve) => setTimeout(() => resolve(false), 3000))
+        ])
+        this.swMissing = !active && !this.standalone
+      } catch {
+        this.swMissing = !this.standalone
+      }
+    },
+    installHint() {
+      if (this.isIos) {
+        return 'En iPhone o iPad: toca Compartir y luego "Añadir a pantalla de inicio"'
+      }
+      if (this.swMissing) {
+        return 'Recarga la pagina para activar la instalacion. Luego usa el menu > Instalar aplicacion'
+      }
+      return 'En Android: menu (3 puntos) > Instalar aplicacion (o Añadir a pantalla de inicio)'
     },
     baseOf(m) {
       if (m.children.length) {
@@ -327,12 +362,10 @@ export default {
 
     async installApp() {
       if (!this.deferredPrompt) {
-        if (this.isIos) {
-          showToast('En iPhone o iPad: toca Compartir y luego "Añadir a pantalla de inicio"', {
-            type: 'info',
-            duration: 8000
-          })
-        }
+        showToast(this.installHint(), {
+          type: 'info',
+          duration: 8000
+        })
         return
       }
       this.deferredPrompt.prompt()
@@ -819,6 +852,8 @@ html, body {
     top: 0;
     left: 0;
     height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
     z-index: 90;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
@@ -827,10 +862,22 @@ html, body {
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
     padding-left: calc(10px + env(safe-area-inset-left));
     width: min(280px, 82vw);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .sidebar.open {
     transform: translateX(0);
+  }
+
+  /* La lista debe poder crecer por encima del alto de la pantalla */
+  .sidebar-nav {
+    flex: 0 0 auto;
+  }
+
+  .sidebar-footer {
+    margin-top: 16px;
   }
 
   .sidebar-backdrop {
