@@ -1,15 +1,13 @@
 import Tesseract from 'tesseract.js'
 import { transcribeCaptchaWithGemini } from './gemini'
-import { getWorkerUrl } from './settings'
+import { resolveApiBase } from './api.js'
 
 const CACHE_PREFIX = 'dualledger-seniat:'
 const MAX_ATTEMPTS = 3
 const ATTEMPT_DELAY_MS = 3000
 
-let WORKER_URL = import.meta.env.VITE_SENIAT_WORKER_URL || '/api'
-
 function workerUrl() {
-  return getWorkerUrl() || WORKER_URL
+  return resolveApiBase()
 }
 
 function workerAvailable() {

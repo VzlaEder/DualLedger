@@ -27,6 +27,11 @@ const execFileP = promisify(execFile)
 
 // --- Pool ---
 
+// pg entrega DATE/TIMESTAMP como objetos Date (hora local), lo que obliga a
+// conversiones en cada consulta. Se devuelven como texto ISO sin sorpresas.
+pg.types.setTypeParser(1082, (v) => v)  // DATE
+pg.types.setTypeParser(1114, (v) => v)  // TIMESTAMP WITHOUT TIME ZONE
+
 export function createPool(url) {
   const { Pool } = pg
   return new Pool({ connectionString: url, max: 5 })
@@ -83,8 +88,9 @@ export async function testConnection(url) {
 }
 
 export async function applySchema(db) {
-  const sql = readFileSync(SCHEMA_PATH, 'utf8')
-  await db.query(sql)
+  // Aplica las migraciones versionadas de server/migrations/.
+  const { runMigrations } = await import('./migrate.mjs')
+  return runMigrations(db, { log: () => {} })
 }
 
 // --- Docker ---

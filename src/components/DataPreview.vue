@@ -4,6 +4,18 @@
       <h2>&#128203; Datos Extraídos</h2>
       <div class="header-actions">
         <span class="record-count">{{ records.length }} registro(s)</span>
+        <span v-if="pendientesSync > 0" class="sync-tag pendiente" title="Documentos sin sincronizar">
+          &#9203; {{ pendientesSync }}
+        </span>
+        <button
+          v-if="records.length > 0"
+          class="btn-save"
+          @click="guardarTodos"
+          :disabled="guardando"
+          title="Guardar los registros en la base de datos"
+        >
+          {{ guardando ? '&#9203; Guardando...' : '&#128190; Guardar en BD' }}
+        </button>
         <button v-if="records.length > 0" class="btn-clear" @click="$emit('clear-records')">
           &#128465; Limpiar
         </button>
@@ -59,6 +71,21 @@
             </span>
           </div>
           <div class="record-actions">
+            <span
+              v-if="estadoSync(record)"
+              class="sync-tag"
+              :class="estadoSync(record)"
+              :title="estadoSync(record) === 'guardado' ? 'Guardado en la base de datos' : 'Pendiente de sincronizar'"
+            >
+              {{ estadoSync(record) === 'guardado' ? '&#10003; BD' : '&#9203;' }}
+            </span>
+            <button
+              class="icon-btn save"
+              @click.stop="guardarRegistro(index)"
+              title="Guardar en la base de datos"
+            >
+              &#128190;
+            </button>
             <button
               v-if="seniatBusy[index]"
               class="seniat-cancel"
@@ -123,6 +150,23 @@
             <span class="field-label">Condición:</span>
             <span class="field-value">{{ record.condicion }}</span>
           </div>
+          <div class="field-row" v-if="datosProveedor(record)">
+            <span class="field-label">Proveedor (maestro):</span>
+            <span class="field-value">
+              {{ datosProveedor(record).nombre }}
+              <span class="field-note" v-if="record.diasCredito">· {{ record.diasCredito }} días de crédito</span>
+              <span class="field-note" v-if="record.codigoCuenta">· Cta. {{ record.codigoCuenta }}</span>
+              <span class="field-note" v-if="record.conceptoIslr">· ISLR {{ record.conceptoIslr }}</span>
+            </span>
+          </div>
+          <div class="field-row" v-if="puedeAutoCompletar(record)">
+            <span class="field-label">Datos del maestro:</span>
+            <span class="field-value">
+              <button class="mini-btn" @click="aplicarDatosProveedor(index)">
+                &#9889; Completar con {{ datosProveedor(record).nombre }}
+              </button>
+            </span>
+          </div>
           <div
             class="field-row"
             v-if="record.tipoDocumento !== 'nota_credito' && record.tipoDocumento !== 'nota_debito'"
@@ -163,10 +207,39 @@
             <span class="field-label">Crédito Fiscal:</span>
             <span class="field-value">{{ formatAmount(record.creditoFiscalNac) }}</span>
           </div>
+          <div class="field-row ret-iva" v-if="retIvaSugerido(record) !== null">
+            <span class="field-label">Ret IVA sugerida ({{ record.porcentajeContribucion }}%):</span>
+            <span class="field-value">
+              {{ formatAmount(retIvaSugerido(record)) }}
+              <button
+                v-if="!Number(record.retIVA)"
+                class="mini-btn"
+                @click="aplicarRetIva(index)"
+                title="Usar el importe calculado como retención de IVA"
+              >
+                Aplicar
+              </button>
+              <span v-else class="field-note">registrada: {{ formatAmount(record.retIVA) }}</span>
+            </span>
+          </div>
         </div>
 
         <div class="record-edit" v-else>
           <div class="edit-grid">
+            <div class="edit-field full">
+              <label>Proveedor (maestro)</label>
+              <select v-model="editForm.proveedorRif" @change="onProveedorChange">
+                <option value="">— Sin asignar —</option>
+                <option v-for="p in proveedores" :key="p.rif" :value="p.rif">
+                  {{ p.nombre }} ({{ p.rif }})
+                </option>
+              </select>
+              <small v-if="editForm.diasCredito || editForm.codigoCuenta" class="edit-hint">
+                <span v-if="editForm.diasCredito">{{ editForm.diasCredito }} días de crédito</span>
+                <span v-if="editForm.codigoCuenta">· Cuenta {{ editForm.codigoCuenta }}</span>
+                <span v-if="editForm.conceptoIslr">· ISLR {{ editForm.conceptoIslr }}</span>
+              </small>
+            </div>
             <div class="edit-field">
               <label>Fecha</label>
               <input v-model="editForm.fecha" type="text" placeholder="DD/MM/AAAA" />
@@ -247,6 +320,26 @@
               <input v-model.number="editForm.retIVA" type="number" step="0.01" />
             </div>
             <div class="edit-field">
+              <label>Comprobante Ret IVA</label>
+              <input v-model="editForm.comprobanteIVA" type="text" placeholder="AAAAMM########" />
+            </div>
+            <div class="edit-field">
+              <label>Fecha Comprobante</label>
+              <input v-model="editForm.fechaIVA" type="text" placeholder="DD/MM/AAAA" />
+            </div>
+            <div class="edit-field">
+              <label>Cuenta Contable</label>
+              <input v-model="editForm.codigoCuenta" type="text" placeholder="5.1.1.01.001" />
+            </div>
+            <div class="edit-field">
+              <label>Días de Crédito</label>
+              <input v-model.number="editForm.diasCredito" type="number" step="1" min="0" />
+            </div>
+            <div class="edit-field">
+              <label>Concepto ISLR</label>
+              <input v-model="editForm.conceptoIslr" type="text" placeholder="01" />
+            </div>
+            <div class="edit-field">
               <label>(3%) IGTF</label>
               <input v-model.number="editForm.igtf" type="number" step="0.01" />
             </div>
@@ -276,6 +369,14 @@ import { verificarRifEnSeniat, lookupSharedCache } from '../utils/seniat.js'
 import CaptchaModal from './CaptchaModal.vue'
 import { showConfirm, showToast } from '../utils/dialog.js'
 import { playErrorSound } from '../utils/sound.js'
+import {
+  cargarProveedores,
+  buscarProveedorEnLista,
+  autoCompletarProveedor,
+  calcularRetIva,
+  guardarDocumentos
+} from '../services/compras.js'
+import { getDocumentosLocales } from '../stores/comprasDb.js'
 
 export default {
   name: 'DataPreview',
@@ -284,7 +385,7 @@ export default {
     records: { type: Array, default: () => [] },
     rawTexts: { type: Array, default: () => [] }
   },
-  emits: ['update-record', 'delete-record', 'add-record', 'go-upload', 'clear-records'],
+  emits: ['update-record', 'delete-record', 'add-record', 'go-upload', 'clear-records', 'saved'],
   data() {
     return {
       editingIndex: -1,
@@ -297,10 +398,15 @@ export default {
       captchaImage: '',
       captchaPromiseResolve: null,
       captchaPromiseReject: null,
-      autoLookupPending: new Set()
+      autoLookupPending: new Set(),
+      proveedores: [],
+      guardando: false,
+      syncEstado: {}
     }
   },
-  mounted() {
+  async mounted() {
+    await this.cargarMaestroProveedores()
+    await this.refrescarEstadoSync()
     this.autoLookupAll()
   },
   watch: {
@@ -322,11 +428,151 @@ export default {
         map[name] = (map[name] || 0) + 1
       })
       return Object.entries(map).map(([name, count]) => ({ name, count }))
+    },
+    pendientesSync() {
+      return Object.values(this.syncEstado).filter(s => s !== 'guardado').length
     }
   },
   methods: {
     normalizeRif(rif) {
       return String(rif || '').replace(/[\s-]/g, '').toUpperCase()
+    },
+
+    // === Maestro de proveedores (auto-completado) ===
+
+    async cargarMaestroProveedores() {
+      try {
+        this.proveedores = await cargarProveedores({ force: true })
+      } catch (e) {
+        this.proveedores = []
+      }
+    },
+
+    datosProveedor(record) {
+      if (!record) return null
+      const rif = this.normalizeRif(record.proveedorRif || record.rif)
+      if (!rif) return null
+      return buscarProveedorEnLista(this.proveedores, rif)
+    },
+
+    puedeAutoCompletar(record) {
+      const prov = this.datosProveedor(record)
+      if (!prov) return false
+      const vacio = (v) => v === undefined || v === null || v === '' || (typeof v === 'number' && v === 0)
+      if (!record.proveedorRif) return true
+      return vacio(record.nombreRazon) || vacio(record.condicion) ||
+        vacio(record.diasCredito) || vacio(record.codigoCuenta) ||
+        vacio(record.porcentajeContribucion)
+    },
+
+    aplicarDatosProveedor(index) {
+      const record = this.records[index]
+      const prov = this.datosProveedor(record)
+      if (!record || !prov) return
+      const cambios = autoCompletarProveedor(record, prov)
+      if (!Object.keys(cambios).length) {
+        showToast('El registro ya tiene los datos del maestro')
+        return
+      }
+      this.$emit('update-record', index, { ...record, ...cambios })
+      showToast('Datos del proveedor aplicados')
+    },
+
+    onProveedorChange() {
+      const rif = this.editForm.proveedorRif
+      const prov = buscarProveedorEnLista(this.proveedores, rif)
+      if (!prov) return
+      const cambios = autoCompletarProveedor(this.editForm, prov, { forzar: true })
+      this.editForm = { ...this.editForm, ...cambios }
+    },
+
+    // === Retención de IVA ===
+
+    retIvaSugerido(record) {
+      if (!record) return null
+      if (!record.porcentajeContribucion) return null
+      return calcularRetIva(record)
+    },
+
+    aplicarRetIva(index) {
+      const record = this.records[index]
+      if (!record) return
+      const valor = calcularRetIva(record)
+      if (valor === null) return
+      this.$emit('update-record', index, { ...record, retIVA: valor })
+      showToast('Retención de IVA aplicada')
+    },
+
+    // === Persistencia en base de datos ===
+
+    async refrescarEstadoSync() {
+      try {
+        const locales = await getDocumentosLocales()
+        const estado = {}
+        for (const d of locales) {
+          estado[d.uid] = d.sincronizado === 1 ? 'guardado' : 'pendiente'
+        }
+        this.syncEstado = estado
+      } catch (e) {
+        this.syncEstado = {}
+      }
+    },
+
+    estadoSync(record) {
+      if (!record || !record.uid) return ''
+      return this.syncEstado[record.uid] || ''
+    },
+
+    async guardarRegistro(index) {
+      const record = this.records[index]
+      if (!record) return
+      this.guardando = true
+      try {
+        const res = await guardarDocumentos([record])
+        if (res.offline) {
+          this.syncEstado = { ...this.syncEstado, [record.uid]: 'pendiente' }
+          showToast('Sin conexión con la API: se guardó localmente y se sincronizará luego', { type: 'warning' })
+        } else if (res.errores && res.errores.length) {
+          this.syncEstado = { ...this.syncEstado, [record.uid]: 'error' }
+          showToast('No se pudo guardar el registro', { type: 'error' })
+        } else {
+          this.syncEstado = { ...this.syncEstado, [record.uid]: 'guardado' }
+          showToast('Registro guardado en la base de datos')
+          this.$emit('saved')
+        }
+      } catch (e) {
+        this.syncEstado = { ...this.syncEstado, [record.uid]: 'error' }
+        showToast('Error al guardar: ' + (e.message || e), { type: 'error' })
+      } finally {
+        this.guardando = false
+      }
+    },
+
+    async guardarTodos() {
+      if (!this.records.length) return
+      this.guardando = true
+      try {
+        const res = await guardarDocumentos(this.records)
+        const estado = { ...this.syncEstado }
+        if (res.offline) {
+          for (const r of this.records) estado[r.uid] = 'pendiente'
+          showToast(`API no disponible: ${this.records.length} registro(s) en cola local`, { type: 'warning' })
+        } else {
+          for (const r of this.records) estado[r.uid] = 'guardado'
+          const err = res.errores ? res.errores.length : 0
+          if (err) {
+            showToast(`${res.guardados} guardados, ${err} con error`, { type: 'warning' })
+          } else {
+            showToast(`${res.guardados} registro(s) guardados en la base de datos`)
+          }
+          this.$emit('saved')
+        }
+        this.syncEstado = estado
+      } catch (e) {
+        showToast('Error al guardar: ' + (e.message || e), { type: 'error' })
+      } finally {
+        this.guardando = false
+      }
     },
 
     autoLookupAll() {
@@ -585,6 +831,70 @@ export default {
 }
 
 .btn-clear:hover { background: rgba(var(--error-rgb), 0.12); }
+
+.btn-save {
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--primary);
+  border: 1px solid rgba(var(--primary-rgb), 0.25);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-save:hover:not(:disabled) { background: rgba(var(--primary-rgb), 0.18); }
+.btn-save:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.sync-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sync-tag.guardado { background: rgba(var(--success-rgb, 34, 197, 94), 0.14); color: #16a34a; }
+.sync-tag.pendiente { background: rgba(var(--warning-rgb, 245, 158, 11), 0.16); color: #b45309; }
+.sync-tag.error { background: rgba(var(--error-rgb), 0.12); color: var(--error); }
+
+.mini-btn {
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--primary);
+  border: 1px solid rgba(var(--primary-rgb), 0.25);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 6px;
+  transition: all 0.2s;
+}
+
+.mini-btn:hover { background: rgba(var(--primary-rgb), 0.2); }
+
+.field-note {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.field-row.ret-iva {
+  background: rgba(var(--warning-rgb, 245, 158, 11), 0.06);
+  border-radius: 4px;
+  padding: 6px 4px;
+}
+
+.edit-hint {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  margin-top: 4px;
+}
 
 .source-summary { margin-bottom: 12px; }
 .source-label { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 6px; }

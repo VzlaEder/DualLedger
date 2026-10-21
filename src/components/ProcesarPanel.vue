@@ -33,6 +33,7 @@
         @add-record="handleAddRecord"
         @go-upload="currentTab = 'upload'"
         @clear-records="handleClearRecords"
+        @saved="handleDocumentosGuardados"
       />
 
       <ExcelExport
@@ -48,6 +49,11 @@
 
       <MaestrosTab
         v-if="currentTab === 'maestros'"
+      />
+
+      <ComprasDocumentos
+        v-if="currentTab === 'documentos'"
+        :refrescar-key="docsRefrescarKey"
       />
     </main>
 
@@ -68,12 +74,15 @@ import DataPreview from './DataPreview.vue'
 import ExcelExport from './ExcelExport.vue'
 import History from './History.vue'
 import MaestrosTab from './MaestrosTab.vue'
+import ComprasDocumentos from './ComprasDocumentos.vue'
 import { processImage, expandFile } from '../utils/ocr.js'
 import { showConfirm, showToast } from '../utils/dialog.js'
 import { unlockAudio, playCompletionSound, playErrorSound } from '../utils/sound.js'
+import { generarUid } from '../stores/comprasDb.js'
 
 function emptyRecord(nro) {
   return {
+    uid: generarUid('doc'),
     nro,
     tipoDocumento: 'factura',
     fecha: '',
@@ -115,9 +124,11 @@ export default {
         { id: 'upload', label: 'Subir', icon: '&#128228;' },
         { id: 'preview', label: 'Datos', icon: '&#128203;' },
         { id: 'export', label: 'Exportar', icon: '&#128229;' },
+        { id: 'documentos', label: 'Documentos', icon: '&#128196;' },
         { id: 'history', label: 'Historial', icon: '&#128218;' },
         { id: 'maestros', label: 'Maestros', icon: '&#128220;' }
       ],
+      docsRefrescarKey: 0,
       records: [],
       rawTexts: [],
       loading: false,
@@ -273,6 +284,7 @@ export default {
           r.source = pageName || 'Imagen'
           r.engine = result.engine || 'tesseract'
           r.note = result.geminiNote || ''
+          if (!r.uid) r.uid = generarUid('doc')
           if (handwritten) r.handwritten = true
           if (r.confidencias && Object.keys(r.confidencias).length > 0) r.handwritten = true
         })
@@ -285,6 +297,10 @@ export default {
     handleUpdateRecord(index, updatedRecord) {
       this.records[index] = { ...updatedRecord }
       this.recalculate(index)
+    },
+
+    handleDocumentosGuardados() {
+      this.docsRefrescarKey++
     },
 
     handleDeleteRecord(index) {

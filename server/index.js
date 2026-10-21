@@ -7,18 +7,34 @@ import { dirname, join } from 'path'
 import { existsSync } from 'fs'
 import * as dbAdmin from './dbAdmin.mjs'
 import * as ed from './exportData.mjs'
+import { createComprasRouter } from './routes/compras.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
+// La API es un servicio independiente del frontend.
+// Prioridad de env: server/.env > .env de la raiz > variables del sistema.
+config({ path: join(__dirname, '.env') })
 config({ path: join(__dirname, '..', '.env') })
 
 const app = express()
 const router = express.Router()
-app.use(cors())
+
+// CORS: por cualquier origen; en produccion se restringe con CORS_ORIGIN.
+const corsOrigins = String(process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+app.use(cors({
+  origin: corsOrigins.length ? corsOrigins : '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400
+}))
 app.use(express.json({ limit: '10mb' }))
 
 const PORT = process.env.PORT || 8787
+const SERVE_STATIC = String(process.env.SERVE_STATIC || '') === '1'
 const SENIAT_BASE = 'http://contribuyente.seniat.gob.ve'
 const FORM_URL = `${SENIAT_BASE}/BuscaRif/BuscaRif.jsp`
 const CAPTCHA_URL = `${SENIAT_BASE}/BuscaRif/Captcha.jpg`
@@ -440,8 +456,8 @@ async function upsertProveedores(proveedores) {
   let updated = 0
   for (const p of proveedores) {
     const { rows } = await pool.query(
-      `INSERT INTO proveedores (rif, nombre, direccion, telefono, porcentaje_ret_iva, concepto_islr, codigo_cuenta, credito_fiscal_no_deducible, condicion)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO proveedores (rif, nombre, direccion, telefono, porcentaje_ret_iva, concepto_islr, codigo_cuenta, credito_fiscal_no_deducible, condicion, dias_credito)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (rif) DO UPDATE SET
          nombre = EXCLUDED.nombre,
          direccion = EXCLUDED.direccion,
@@ -450,9 +466,10 @@ async function upsertProveedores(proveedores) {
          concepto_islr = EXCLUDED.concepto_islr,
          codigo_cuenta = EXCLUDED.codigo_cuenta,
          credito_fiscal_no_deducible = EXCLUDED.credito_fiscal_no_deducible,
-         condicion = EXCLUDED.condicion
+         condicion = EXCLUDED.condicion,
+         dias_credito = EXCLUDED.dias_credito
        RETURNING (xmax = 0) AS is_new`,
-      [p.rif, p.nombre || '', p.direccion || '', p.telefono || '', p.porcentajeRetIva ?? 75, p.conceptoIslr || null, p.codigoCuenta || null, p.creditoFiscalNoDeducible === true, p.condicion || '']
+      [p.rif, p.nombre || '', p.direccion || '', p.telefono || '', p.porcentajeRetIva ?? 75, p.conceptoIslr || null, p.codigoCuenta || null, p.creditoFiscalNoDeducible === true, p.condicion || '', p.diasCredito ?? 0]
     )
     if (rows[0].is_new) inserted++
     else updated++
@@ -502,7 +519,7 @@ router.get('/proveedores', async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT rif, nombre, direccion, telefono, porcentaje_ret_iva, concepto_islr, codigo_cuenta, credito_fiscal_no_deducible, condicion
+      `SELECT rif, nombre, direccion, telefono, porcentaje_ret_iva, concepto_islr, codigo_cuenta, credito_fiscal_no_deducible, condicion, dias_credito
        FROM proveedores
        ORDER BY nombre`
     )
@@ -517,7 +534,8 @@ router.get('/proveedores', async (req, res) => {
         conceptoIslr: r.concepto_islr,
         codigoCuenta: r.codigo_cuenta,
         creditoFiscalNoDeducible: r.credito_fiscal_no_deducible,
-        condicion: r.condicion
+        condicion: r.condicion,
+        diasCredito: r.dias_credito || 0
       }))
     })
   } catch (e) {
@@ -576,7 +594,30 @@ router.get('/parametros', async (req, res) => {
   }
 })
 
+// Sonda de salud de la API (usada por el front para saber si la API esta viva).
+router.get('/health', async (req, res) => {
+  let db = 'deshabilitado'
+  if (pool) {
+    try {
+      await pool.query('SELECT 1')
+      db = 'ok'
+    } catch (e) {
+      db = 'error'
+    }
+  }
+  res.json({
+    ok: true,
+    service: 'dualledger-api',
+    version: 1,
+    db,
+    hora: new Date().toISOString()
+  })
+})
+
 app.use('/api', router)
+
+// Libro de Compras (módulo de compras)
+app.use('/api', createComprasRouter({ getPool: () => pool }))
 
 // ============================================================
 // Rutas administrativas (provisionales, mientras no exista la
@@ -771,30 +812,8 @@ router.delete('/admin/tables/:name/rows', async (req, res) => {
   }
 })
 
-router.get('/admin/export/:name', async (req, res) => {
-  const p = requirePool(res)
-  if (!p) return
-  const name = parseTableName(req, res)
-  if (!name) return
-  const fmt = String(req.query.fmt || 'csv').toLowerCase()
-  if (!['csv', 'json', 'sql'].includes(fmt)) return res.status(400).json({ ok: false, error: 'Formato no válido (csv, json o sql)' })
-  try {
-    const info = await dbAdmin.tableInfo(p, name)
-    const rows = await dbAdmin.selectAll(p, name)
-    const map = {
-      csv: [ed.rowsToCsv(info.columns, rows), 'text/csv'],
-      json: [ed.rowsToJson(rows), 'application/json'],
-      sql: [ed.rowsToInserts(name, info.columns, rows), 'application/sql']
-    }
-    const [content, ctype] = map[fmt]
-    res.setHeader('Content-Type', `${ctype}; charset=utf-8`)
-    res.setHeader('Content-Disposition', `attachment; filename="${name}.${fmt}"`)
-    res.send(content)
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message) })
-  }
-})
-
+// Nota de orden: las rutas literales (/all, /sql) deben registrarse
+// ANTES que las paramétricas (/:name) o Express las captura primero.
 router.get('/admin/export/all', async (req, res) => {
   const p = requirePool(res)
   if (!p) return
@@ -822,6 +841,44 @@ router.get('/admin/export/all', async (req, res) => {
     }
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.get('/admin/export/:name', async (req, res) => {
+  const p = requirePool(res)
+  if (!p) return
+  const name = parseTableName(req, res)
+  if (!name) return
+  const fmt = String(req.query.fmt || 'csv').toLowerCase()
+  if (!['csv', 'json', 'sql'].includes(fmt)) return res.status(400).json({ ok: false, error: 'Formato no válido (csv, json o sql)' })
+  try {
+    const info = await dbAdmin.tableInfo(p, name)
+    const rows = await dbAdmin.selectAll(p, name)
+    const map = {
+      csv: [ed.rowsToCsv(info.columns, rows), 'text/csv'],
+      json: [ed.rowsToJson(rows), 'application/json'],
+      sql: [ed.rowsToInserts(name, info.columns, rows), 'application/sql']
+    }
+    const [content, ctype] = map[fmt]
+    res.setHeader('Content-Type', `${ctype}; charset=utf-8`)
+    res.setHeader('Content-Disposition', `attachment; filename="${name}.${fmt}"`)
+    res.send(content)
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) })
+  }
+})
+
+router.post('/admin/import/sql', async (req, res) => {
+  const p = requirePool(res)
+  if (!p) return
+  const content = String((req.body && req.body.content) || '')
+  if (!content.trim()) return res.status(400).json({ ok: false, error: 'Script vacío' })
+  if (content.length > 50 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'Script demasiado grande' })
+  try {
+    await p.query(content)
+    res.json({ ok: true })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message).slice(0, 500) })
   }
 })
 
@@ -856,26 +913,12 @@ router.post('/admin/import/:name', async (req, res) => {
   }
 })
 
-router.post('/admin/import/sql', async (req, res) => {
-  const p = requirePool(res)
-  if (!p) return
-  const content = String((req.body && req.body.content) || '')
-  if (!content.trim()) return res.status(400).json({ ok: false, error: 'Script vacío' })
-  if (content.length > 50 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'Script demasiado grande' })
-  try {
-    await p.query(content)
-    res.json({ ok: true })
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message).slice(0, 500) })
-  }
-})
-
-// === Servido del build de producción (dist/) ===
-// Solo cuando el proceso se ejecuta de forma independiente (no como middleware de Vite):
-// node index.js sirve la app estática + /api + PostgreSQL desde el mismo origen.
+// === Frontend estatico (opcional) ===
+// La API NO sirve el frontend por defecto: son despliegues separados.
+// Activa SERVE_STATIC=1 solo para despliegues de un solo proceso.
 const isDirectRun = process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('server/index.js')
 
-if (isDirectRun) {
+if (SERVE_STATIC) {
   const distDir = join(__dirname, '..', 'dist')
   if (existsSync(distDir)) {
     app.use(express.static(distDir))
@@ -886,9 +929,9 @@ if (isDirectRun) {
       }
       res.sendFile(join(distDir, 'index.html'))
     })
-    console.log(`[DualLedger] Sirviendo build estático de ${distDir}`)
+    console.log(`[DualLedger] Sirviendo build estatico de ${distDir}`)
   } else {
-    console.warn('[DualLedger] No existe dist/ - sirviendo solo /api. Ejecuta antes: npm run build')
+    console.warn('[DualLedger] SERVE_STATIC=1 pero no existe dist/ - sirviendo solo /api')
   }
 }
 
@@ -896,7 +939,9 @@ export { app }
 
 if (isDirectRun) {
   app.listen(PORT, () => {
-    console.log(`[DualLedger] Servidor corriendo en http://127.0.0.1:${PORT}`)
-    console.log(`[DualLedger] PostgreSQL: ${pool ? 'Conectado' : 'Deshabilitado'}`)
+    console.log(`[DualLedger API] Corriendo en http://127.0.0.1:${PORT}`)
+    console.log(`[DualLedger API] PostgreSQL: ${pool ? 'Conectado' : 'Deshabilitado'}`)
+    console.log(`[DualLedger API] CORS: ${corsOrigins.length ? corsOrigins.join(', ') : '*'}`)
+    console.log(`[DualLedger API] Front estatico: ${SERVE_STATIC ? 'si (SERVE_STATIC=1)' : 'no (desplegar aparte)'}`)
   })
 }

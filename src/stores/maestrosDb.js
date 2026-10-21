@@ -1,10 +1,10 @@
 import { openDB } from 'idb'
 
-// Base IndexedDB dedicada a los maestros del módulo de compras.
+// Base IndexedDB dedicada al módulo de compras (maestros + documentos).
 // Se mantiene separada de "image-info-pwa" (stores/db.js) para no
 // conflictuar con su versión y permitir evolucionar el esquema con idb.
 const DB_NAME = 'dualledger-maestros'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 let dbPromise = null
 
@@ -34,11 +34,21 @@ function getDB() {
           store.createIndex('tipo', 'tipo')
           store.createIndex('pendiente', 'pendiente')
         }
+        // Documentos del Libro de Compras (offline-first)
+        if (!db.objectStoreNames.contains('comprasDocumentos')) {
+          const store = db.createObjectStore('comprasDocumentos', { keyPath: 'uid' })
+          store.createIndex('fecha', 'fecha')
+          store.createIndex('rif', 'rif')
+          store.createIndex('estado', 'estado')
+          store.createIndex('sincronizado', 'sincronizado')
+        }
       }
     })
   }
   return dbPromise
 }
+
+export { getDB }
 
 // === Cuentas contables ===
 

@@ -2,11 +2,12 @@
   "name": "dualledger-server",
   "version": "1.0.0",
   "type": "module",
-  "description": "Proxy local para DualLedger - consulta SENIAT y cache en PostgreSQL",
+  "description": "API DualLedger - servicio independiente del frontend (SENIAT, maestros y Libro de Compras)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "migrate": "node migrate.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

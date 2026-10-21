@@ -1,15 +1,15 @@
 <template>
   <div class="seniat-panel">
     <p class="modal-subtitle">
-      El servicio SENIAT corre en tu propia infraestructura (proxy local Express con
-      PostgreSQL) y está embebido en la app (ruta <code>/api</code>). Se usa para rellenar
-      la razón social, % de contribución y condición de cada RIF.
+      La API (proxy local Express con PostgreSQL) es un servicio independiente del frontend:
+      en desarrollo corre en <code>http://127.0.0.1:8787/api</code> y el front la alcanza por
+      proxy. Se usa para rellenar la razón social, % de contribución y condición de cada RIF.
     </p>
 
     <div class="status-box" v-if="status">
       <div class="status-line-info">
         <span :class="['dot', status.ok ? 'dot-ok' : 'dot-err']"></span>
-        <strong>{{ status.ok ? 'Servicio activo' : 'Servicio no disponible' }}</strong>
+        <strong>{{ status.ok ? 'API disponible' : 'API no disponible' }}</strong>
       </div>
       <p class="status-detail" v-if="status.ok">
         {{ status.service }} — PostgreSQL:
@@ -21,11 +21,11 @@
     </div>
 
     <div class="field">
-      <label>URL del servicio (opcional)</label>
-      <input v-model="urlOverride" type="text" placeholder="Vacío = proxy local /api" />
+      <label>URL de la API (opcional)</label>
+      <input v-model="urlOverride" type="text" placeholder="Vacío = /api (proxy o mismo origen)" />
       <small>
-        Déjalo vacío para usar el proxy local embebido (<code>/api</code>). Solo rellénalo si
-        en el futuro apuntas a un backend SENIAT desplegado en tu propio dominio.
+        Déjalo vacío para usar la ruta <code>/api</code> (proxy de Vite en desarrollo). Rellénalo
+        solo si la API está desplegada en otro dominio, p. ej. <code>https://api.midominio.com</code>.
       </small>
     </div>
 
@@ -42,7 +42,7 @@
         @click="resetToLocal"
         :disabled="busy"
       >
-        Restablecer a local (/api)
+        Restablecer a /api
       </button>
     </div>
 
@@ -51,7 +51,7 @@
 </template>
 
 <script>
-import { getWorkerUrl, setWorkerUrl, clearWorkerUrl } from '../utils/settings'
+import { getApiUrl, setApiUrl, clearApiUrl } from '../utils/settings.js'
 
 const LOCAL_PROXY = '/api'
 
@@ -60,7 +60,7 @@ export default {
   data() {
     return {
       busy: false,
-      urlOverride: getWorkerUrl() || '',
+      urlOverride: getApiUrl() || '',
       status: null,
       error: ''
     }
@@ -70,7 +70,7 @@ export default {
       return this.urlOverride.trim().replace(/\/+$/, '') || LOCAL_PROXY
     },
     hasOverride() {
-      return !!getWorkerUrl()
+      return !!getApiUrl()
     }
   },
   methods: {
@@ -93,7 +93,7 @@ export default {
       } catch (e) {
         this.status = {
           ok: false,
-          error: (e && e.message) || 'No se pudo conectar con el servicio SENIAT'
+          error: (e && e.message) || 'No se pudo conectar con la API'
         }
       } finally {
         this.busy = false
@@ -101,12 +101,12 @@ export default {
     },
     saveOverride() {
       this.error = ''
-      setWorkerUrl(this.urlOverride)
+      setApiUrl(this.urlOverride)
       this.status = null
     },
     resetToLocal() {
       this.error = ''
-      clearWorkerUrl()
+      clearApiUrl()
       this.urlOverride = ''
       this.status = null
     }

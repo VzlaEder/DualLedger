@@ -6,10 +6,14 @@
   "scripts": {
     "postinstall": "node scripts/ensure-server-deps.mjs",
     "predev": "node server/init-db.mjs",
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "node --watch server/index.js",
+    "dev:web": "vite",
     "build": "vite build",
-    "prestart": "node server/init-db.mjs && node scripts/ensure-dist.mjs",
+    "prestart": "node server/init-db.mjs",
     "start": "node server/index.js",
+    "start:api": "node server/index.js",
+    "start:web": "vite preview",
     "preview": "vite preview"
   },
   "dependencies": {
