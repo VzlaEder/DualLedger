@@ -1,18 +1,20 @@
 <template>
   <div class="dnf-view">
-    <div class="dnf-head">
-      <div>
-        <h2>Documentos no fiscales</h2>
-        <p class="sub">
-          Comprobantes de gastos sin factura fiscal (recibos, tickets, contratos, etc.).
-          <strong>No se incluyen en el Libro de Compras</strong> ni generan retenciones.
-        </p>
-      </div>
-      <div class="head-actions">
+    <ReportHeader
+      title="Documentos no fiscales"
+      icon="&#129534;"
+      badge="Registro · fuera del libro"
+      accent="#64748b"
+    >
+      <template #subtitle>
+        Comprobantes de gastos sin factura fiscal (recibos, tickets, contratos, etc.).
+        <strong>No se incluyen en el Libro de Compras</strong> ni generan retenciones.
+      </template>
+      <template #actions>
         <button class="btn" :disabled="cargando" @click="cargar">Recargar</button>
         <button class="btn btn-primary" @click="nuevo">+ Nuevo</button>
-      </div>
-    </div>
+      </template>
+    </ReportHeader>
 
     <div v-if="!editando" class="card">
       <div class="toolbar">
@@ -185,6 +187,7 @@
 
 <script>
 import AccountSelector from './AccountSelector.vue'
+import ReportHeader from './ReportHeader.vue'
 import { getJson, postJson } from '../utils/api.js'
 import { showAlert, showConfirm, showToast } from '../utils/dialog.js'
 import { validarRif } from '../services/rif.js'
@@ -208,7 +211,7 @@ import {
 
 export default {
   name: 'DocumentosNoFiscalesView',
-  components: { AccountSelector },
+  components: { AccountSelector, ReportHeader },
   data() {
     return {
       documentos: [],
@@ -402,10 +405,7 @@ export default {
 
 <style scoped>
 .dnf-view { display: flex; flex-direction: column; gap: 16px; }
-.dnf-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.dnf-head h2 { margin: 0 0 4px; font-size: 1.35rem; }
-.sub { margin: 0; color: var(--text-secondary); font-size: 0.88rem; max-width: 640px; }
-.head-actions, .ficha-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ficha-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -480,7 +480,7 @@ export default {
 .hint { color: var(--text-secondary); font-size: 0.73rem; }
 .check-line { display: flex; align-items: center; gap: 7px; margin-top: 18px; font-size: 0.84rem; }
 @media (max-width: 720px) {
-  .dnf-head, .ficha-head { flex-direction: column; }
+  .ficha-head { flex-direction: column; }
   .grid { grid-template-columns: 1fr; }
 }
 </style>

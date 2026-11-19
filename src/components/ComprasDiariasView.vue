@@ -2,21 +2,20 @@
   <div class="cd-view">
     <!-- ===================== LISTADO (manual 1.3) ===================== -->
     <template v-if="!editando">
-      <div class="cd-head">
-        <div>
-          <h2>Compras diarias</h2>
-          <p class="sub">
-            Registro de las facturas de compras. Al guardar se generan automáticamente
-            las retenciones de IVA e ISLR (manual 1.3 / 1.3.1.4).
-          </p>
-        </div>
-        <div class="head-actions">
+      <ReportHeader
+        title="Compras diarias"
+        icon="&#128722;"
+        badge="Registro · Libro de Compras"
+        accent="#d97706"
+        subtitle="Registro de las facturas de compras. Al guardar se generan automáticamente las retenciones de IVA e ISLR (manual 1.3 / 1.3.1.4)."
+      >
+        <template #actions>
           <button class="btn" :disabled="cargando" @click="cargar">Ver (F5)</button>
           <button class="btn" :disabled="!seleccionado" @click="imprimir('iva')">Imprimir (F6)</button>
           <button class="btn" :disabled="cargando" @click="exportarExcel">Exportar Excel (F7)</button>
           <button class="btn btn-primary" @click="nuevo">+ Nuevo</button>
-        </div>
-      </div>
+        </template>
+      </ReportHeader>
 
       <div class="card">
         <div class="filtros">
@@ -557,6 +556,7 @@
 
 <script>
 import AccountSelector from './AccountSelector.vue'
+import ReportHeader from './ReportHeader.vue'
 import { showAlert, showConfirm, showToast } from '../utils/dialog.js'
 import { getCuentas, getProveedores } from '../stores/maestrosDb.js'
 import { getArticulos } from '../stores/articulosDb.js'
@@ -592,7 +592,7 @@ function esc(v) {
 
 export default {
   name: 'ComprasDiariasView',
-  components: { AccountSelector },
+  components: { AccountSelector, ReportHeader },
   data() {
     return {
       documentos: [],
@@ -1055,10 +1055,6 @@ th{background:#eee;width:34%}.mono{font-family:Consolas,monospace}
 
 <style scoped>
 .cd-view { display: flex; flex-direction: column; gap: 16px; }
-.cd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.cd-head h2 { margin: 0 0 4px; font-size: 1.35rem; }
-.sub { margin: 0; color: var(--text-secondary); font-size: 0.88rem; max-width: 640px; }
-.head-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .btn-volver { border-color: var(--primary); color: var(--primary); font-weight: 600; }
 .card {
   background: var(--surface);
@@ -1172,6 +1168,6 @@ th{background:#eee;width:34%}.mono{font-family:Consolas,monospace}
 .modal-item { display: grid; grid-template-columns: auto auto 1fr auto; gap: 10px; text-align: left; border: 1px solid transparent; background: transparent; color: var(--text); padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-family: inherit; }
 .modal-item:hover { border-color: var(--primary); }
 @media (max-width: 1200px) { .ficha-cuerpo { grid-template-columns: 1fr; } }
-@media (max-width: 900px) { .filtros { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cd-head { flex-direction: column; } .head-actions { justify-content: flex-start; } }
+@media (max-width: 900px) { .filtros { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 620px) { .filtros, .grid { grid-template-columns: 1fr; } }
 </style>

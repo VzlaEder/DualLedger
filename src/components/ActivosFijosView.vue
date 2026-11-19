@@ -1,21 +1,19 @@
 <template>
   <div class="af-view">
-    <div class="af-head">
-      <div>
-        <h2>Activos Fijos</h2>
-        <p class="sub">
-          Registro, control y depreciación del activo fijo de la empresa. La depreciación se calcula
-          en forma derivada; no se guarda como dato. Las cuentas contables vinculan cada activo con
-          el plan de cuentas.
-        </p>
-      </div>
-      <div class="head-actions">
+    <ReportHeader
+      title="Activos Fijos"
+      icon="&#127970;"
+      badge="Maestro · control y depreciación"
+      accent="#059669"
+      subtitle="Registro, control y depreciación del activo fijo de la empresa. La depreciación se calcula en forma derivada; no se guarda como dato. Las cuentas contables vinculan cada activo con el plan de cuentas."
+    >
+      <template #actions>
         <button class="btn" :disabled="cargando" @click="cargar">Recargar</button>
         <button class="btn" :disabled="!filtrados.length" @click="exportar">Exportar Excel (CSV)</button>
-        <button class="btn btn-primary" :disabled="!filtrados.length" @click="imprimir">Imprimir</button>
+        <button class="btn" :disabled="!filtrados.length" @click="imprimir">Imprimir</button>
         <button v-if="!editando" class="btn btn-primary" @click="nuevo">+ Nuevo</button>
-      </div>
-    </div>
+      </template>
+    </ReportHeader>
 
     <!-- ===== Listado ===== -->
     <template v-if="!editando">
@@ -68,32 +66,7 @@
       <div v-if="cargando" class="card empty-state">Cargando activos fijos…</div>
 
       <template v-else>
-        <div class="resumen">
-          <div class="metrica destacada">
-            <span>Valor neto en libros</span>
-            <strong>Bs {{ dinero(resumen.valorNeto) }}</strong>
-          </div>
-          <div class="metrica">
-            <span>Costo total</span>
-            <strong>Bs {{ dinero(resumen.costo) }}</strong>
-          </div>
-          <div class="metrica">
-            <span>Depreciación acumulada</span>
-            <strong>Bs {{ dinero(resumen.depreciacion) }}</strong>
-          </div>
-          <div class="metrica">
-            <span>Activos registrados</span>
-            <strong>{{ resumen.cantidad }}</strong>
-          </div>
-          <div class="metrica">
-            <span>En uso</span>
-            <strong>{{ resumen.activos }}</strong>
-          </div>
-          <div class="metrica">
-            <span>Dados de baja</span>
-            <strong>{{ resumen.dadosDeBaja }}</strong>
-          </div>
-        </div>
+        <SummaryCards :metrics="metricas" accent="#059669" />
 
         <div class="card">
           <div v-if="!filtrados.length" class="empty-state">
@@ -358,8 +331,11 @@
 
 <script>
 import AccountSelector from './AccountSelector.vue'
+import ReportHeader from './ReportHeader.vue'
+import SummaryCards from './SummaryCards.vue'
 import { getJson, postJson } from '../utils/api.js'
 import { showAlert, showConfirm, showToast } from '../utils/dialog.js'
+import { descargarCsv, dinero, fechaMostrar, imprimirReporte } from '../utils/reporte.js'
 import { agregarPendiente, getCuentas } from '../stores/maestrosDb.js'
 import { getActivosFijos, saveActivosFijos } from '../stores/activosFijosDb.js'
 import { generarUid } from '../stores/comprasDb.js'
@@ -388,7 +364,7 @@ import {
 
 export default {
   name: 'ActivosFijosView',
-  components: { AccountSelector },
+  components: { AccountSelector, ReportHeader, SummaryCards },
   data() {
     return {
       activos: [],
@@ -424,6 +400,17 @@ export default {
     resumen() {
       return resumenActivosFijos(this.filtrados, this.filtros.hasta)
     },
+    metricas() {
+      const r = this.resumen
+      return [
+        { label: 'Valor neto en libros', value: `Bs ${this.dinero(r.valorNeto)}` },
+        { label: 'Costo total', value: `Bs ${this.dinero(r.costo)}` },
+        { label: 'Depreciación acumulada', value: `Bs ${this.dinero(r.depreciacion)}` },
+        { label: 'Activos registrados', value: r.cantidad },
+        { label: 'En uso', value: r.activos },
+        { label: 'Dados de baja', value: r.dadosDeBaja }
+      ]
+    },
     cuentasConActivos() {
       return valoresUnicosActivos(this.activos, 'cuentaActivo')
     }
@@ -439,16 +426,8 @@ export default {
     depreciacionMensual,
     valorNeto,
     tablaDepreciacion,
-    dinero(v) {
-      const n = Number(v)
-      if (!isFinite(n)) return '0,00'
-      return n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    },
-    fechaMostrar(fecha) {
-      if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return '—'
-      const [y, m, d] = fecha.split('-')
-      return `${d}/${m}/${y}`
-    },
+    dinero,
+    fechaMostrar,
     claseEstado(estado) {
       if (estado === 'Activo') return 'pill-ok'
       if (estado === 'En mantenimiento') return 'pill-warn'
@@ -583,80 +562,41 @@ export default {
     limpiarFiltros() {
       this.filtros = { ...filtrosActivosFijosVacios(), hasta: hoyISO() }
     },
-    esc(v) {
-      return String(v == null ? '' : v)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-    },
     exportar() {
       if (!this.filtrados.length) {
         showToast('No hay activos para exportar con los filtros actuales.', { type: 'warning' })
         return
       }
-      const blob = new Blob([csvActivosFijos(this.filtrados, this.filtros.hasta)], {
-        type: 'text/csv;charset=utf-8'
-      })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'activos-fijos.csv'
-      a.click()
-      URL.revokeObjectURL(url)
-      showToast('Activos fijos exportados a Excel (CSV).')
+      descargarCsv('activos-fijos.csv', csvActivosFijos(this.filtrados, this.filtros.hasta), 'Activos fijos exportados a Excel (CSV).')
     },
     imprimir() {
       if (!this.filtrados.length) {
         showToast('No hay activos para imprimir con los filtros actuales.', { type: 'warning' })
         return
       }
-      const filas = this.filtrados.map((a) => `<tr>
-        <td>${this.esc(a.codigo)}</td>
-        <td>${this.esc(a.descripcion)}</td>
-        <td>${this.esc(a.categoria)}</td>
-        <td>${this.esc(this.fechaMostrar(a.fechaAdquisicion))}</td>
-        <td class="num">${this.esc(this.dinero(costoTotal(a)))}</td>
-        <td class="num">${this.esc(this.dinero(depreciacionAcumulada(a, this.filtros.hasta)))}</td>
-        <td class="num">${this.esc(this.dinero(valorNeto(a, this.filtros.hasta)))}</td>
-        <td>${this.esc(a.estado)}</td>
-      </tr>`).join('')
       const r = this.resumen
-      const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
-<title>Activos fijos</title>
-<style>
-body{font-family:Arial,sans-serif;color:#222;margin:24px;font-size:12px}
-h1{font-size:17px;text-align:center;margin:0 0 4px}
-.sub{text-align:center;color:#555;margin:0 0 18px}
-table{border-collapse:collapse;width:100%;margin-bottom:14px}
-th,td{border:1px solid #bbb;padding:6px 8px;text-align:left}
-th{background:#eee;font-size:11px}
-.num{text-align:right}
-.total{font-weight:bold;background:#f6f6f6}
-</style></head><body>
-<h1>Activos fijos</h1>
-<p class="sub">Depreciación calculada al ${this.esc(this.fechaMostrar(this.filtros.hasta))}</p>
-<table><thead><tr>
-<th>Código</th><th>Descripción</th><th>Categoría</th><th>Adquisición</th>
-<th>Costo</th><th>Dep. acum.</th><th>Valor neto</th><th>Estado</th>
-</tr></thead><tbody>${filas}</tbody>
-<tfoot><tr class="total">
-<td colspan="4">Totales (${r.cantidad} activos)</td>
-<td class="num">${this.esc(this.dinero(r.costo))}</td>
-<td class="num">${this.esc(this.dinero(r.depreciacion))}</td>
-<td class="num">${this.esc(this.dinero(r.valorNeto))}</td>
-<td></td>
-</tr></tfoot></table>
-</body></html>`
-      const w = window.open('', '_blank')
-      if (!w) {
-        showToast('El navegador bloqueó la ventana de impresión.', { type: 'warning' })
-        return
-      }
-      w.document.write(html)
-      w.document.close()
-      w.focus()
-      w.print()
+      imprimirReporte({
+        titulo: 'ACTIVOS FIJOS',
+        subtitulo: `Depreciación calculada al ${this.fechaMostrar(this.filtros.hasta)}`,
+        resumen: [
+          { label: 'Costo total', valor: this.dinero(r.costo) },
+          { label: 'Dep. acumulada', valor: this.dinero(r.depreciacion) },
+          { label: 'Valor neto', valor: this.dinero(r.valorNeto) },
+          { label: 'Activos', valor: r.cantidad }
+        ],
+        encabezados: ['Código', 'Descripción', 'Categoría', 'Adquisición', 'Costo', 'Dep. acum.', 'Valor neto', 'Estado'],
+        filas: this.filtrados.map((a) => [
+          a.codigo,
+          a.descripcion,
+          a.categoria,
+          this.fechaMostrar(a.fechaAdquisicion),
+          { valor: this.dinero(costoTotal(a)), numero: true },
+          { valor: this.dinero(depreciacionAcumulada(a, this.filtros.hasta)), numero: true },
+          { valor: this.dinero(valorNeto(a, this.filtros.hasta)), numero: true },
+          a.estado
+        ]),
+        nota: `Totales: costo Bs ${this.dinero(r.costo)} · depreciación Bs ${this.dinero(r.depreciacion)} · valor neto Bs ${this.dinero(r.valorNeto)}.`
+      })
     }
   }
 }
@@ -664,10 +604,7 @@ th{background:#eee;font-size:11px}
 
 <style scoped>
 .af-view { display: flex; flex-direction: column; gap: 16px; }
-.af-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.af-head h2 { margin: 0 0 4px; font-size: 1.35rem; }
-.sub { margin: 0; color: var(--text-secondary); font-size: 0.88rem; max-width: 680px; }
-.head-actions, .ficha-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.ficha-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -705,9 +642,9 @@ th{background:#eee;font-size:11px}
   font-family: inherit;
 }
 .btn-small { padding: 5px 9px; font-size: 0.76rem; }
-.btn:hover:not(:disabled) { border-color: var(--primary); }
+.btn:hover:not(:disabled) { border-color: #059669; }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-.btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn-primary { background: #059669; border-color: #059669; color: #fff; }
 .btn-danger { color: var(--error); border-color: rgba(var(--error-rgb), 0.4); }
 .resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
 .resumen.interna { margin-top: 18px; }
@@ -722,7 +659,7 @@ th{background:#eee;font-size:11px}
 }
 .metrica span { color: var(--text-secondary); font-size: 0.75rem; }
 .metrica strong { font-size: 1.1rem; }
-.metrica.destacada { border-color: var(--primary); }
+.metrica.destacada { border-color: #059669; }
 .table-scroll { overflow-x: auto; margin-top: 12px; }
 .af-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
 .af-table th, .af-table td {
@@ -739,7 +676,7 @@ th{background:#eee;font-size:11px}
 .subcelda { display: block; color: var(--text-secondary); font-size: 0.72rem; }
 .row-actions { display: flex; gap: 6px; }
 .pill { border-radius: 999px; padding: 3px 9px; font-size: 0.72rem; border: 1px solid var(--border); }
-.pill-ok { color: #1b7f4b; border-color: rgba(27, 127, 75, 0.4); }
+.pill-ok { color: #059669; border-color: rgba(5, 150, 105, 0.4); }
 .pill-warn { color: #a86a00; border-color: rgba(168, 106, 0, 0.4); }
 .pill-off { color: var(--text-secondary); }
 .empty-state { padding: 28px 12px; text-align: center; color: var(--text-secondary); font-size: 0.88rem; }
@@ -757,7 +694,7 @@ th{background:#eee;font-size:11px}
   font-family: inherit;
   border-bottom: 2px solid transparent;
 }
-.tab.active { color: var(--primary); font-weight: 600; border-bottom-color: var(--primary); }
+.tab.active { color: #059669; font-weight: 600; border-bottom-color: #059669; }
 .tab-body { padding-top: 16px; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .con-row { display: flex; gap: 8px; align-items: center; }
@@ -768,7 +705,7 @@ th{background:#eee;font-size:11px}
 @media (max-width: 980px) { .filtros-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) {
   .filtros-grid, .grid { grid-template-columns: 1fr; }
-  .af-head, .ficha-head { flex-direction: column; }
-  .head-actions, .ficha-actions { justify-content: flex-start; }
+  .ficha-head { flex-direction: column; }
+  .ficha-actions { justify-content: flex-start; }
 }
 </style>
