@@ -116,7 +116,7 @@ function emptyRecord(nro) {
 
 export default {
   name: 'ProcesarPanel',
-  components: { ImageUploader, DataPreview, ExcelExport, History, MaestrosTab },
+  components: { ImageUploader, DataPreview, ExcelExport, History, MaestrosTab, ComprasDocumentos },
   data() {
     return {
       currentTab: 'upload',
