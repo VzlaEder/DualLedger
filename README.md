@@ -44,6 +44,12 @@
 - **Documentos Impresos y Manuscritos:** Soporte completo con puntuación de confianza por campo
 - **Tipos de Documento:** Facturas, **notas de crédito**, **notas de débito** y reportes Z, con factura afectada y manejo de signos.
 - **Verificación SENIAT:** Consulta del RIF contra el portal público del SENIAT (razón social, % de contribución y condición), con captcha manual y caché compartida en PostgreSQL.
+- **Maestro de Proveedores (Compras → Proveedores):** Listado y ficha de alta/edición con validación de RIF, retenciones IVA 75%/100%, retención ISLR por concepto, cuenta contable y días de crédito. Guarda en IndexedDB y sincroniza con PostgreSQL cuando está disponible.
+- **Articulos (Compras → Articulos):** Maestro offline-first de artículos/cuentas imputables en las facturas de compra, según el manual 1.1. Incluye los filtros y la ficha por pestañas de las capturas (Producto, Análisis, Productos Compuestos, Lista de Precios, Avanzado), con C.C Venta y C.C Compra vinculados al plan de cuentas.
+- **Compras diarias (Compras → Compras diarias):** Registro de facturas según el manual 1.3 / 1.3.1. Listado con filtros (Almacén, Desde, Hasta, Status) y ficha con pestañas Encabezado, Detalles, Retenciones, ISLR, Inventario y Avanzado. Selección de proveedor y cuenta contable, líneas importadas desde Articulos, cálculo de totales (exento, IVA, IGTF) y generación automática de comprobantes de retención IVA e ISLR con impresión. Las facturas se guardan en el Libro de Compras (`compras_documentos`) y el detalle de la ficha viaja en `payload`.
+- **Documentos no fiscales (Compras → Documentos no fiscales):** Registro offline-first de recibos, tickets y comprobantes sin factura fiscal. Se guardan en su propia tabla y **no entran al Libro de Compras**.
+- **Relación de gastos (Compras → Relación de gastos):** Reporte de solo lectura que consolida las facturas del Libro de Compras y los documentos no fiscales en gastos deducibles / no deducibles. Incluye filtros por fecha, origen, cuenta y deducibilidad, resumen mensual, agrupación por cuenta/periodo y exportación CSV o impresión. El manual no describe esta sección: se deriva de los datos ya registrados, sin crear campos nuevos.
+- **CxP (Compras → CxP):** Consulta de solo lectura de cuentas por pagar derivada del Libro de Compras y del maestro de proveedores. Calcula vencimientos (fecha de la factura o días de crédito), saldo neto (total + IGTF − retenciones), estado (vencido, por vencer, sin vencimiento, pagado) y aging. Incluye filtros, resumen, agrupación por proveedor/antigüedad/periodo y exportación CSV o impresión. No registra pagos ni abonos.
 - **PWA Offline-First:** Funciona sin conexión después de la carga inicial
 - **Exportación Excel:** Genera archivos .xlsx en formato Libro de Compras venezolano
 - **Historial de Exportaciones:** Registro persistente en IndexedDB
@@ -394,7 +400,7 @@ Si no configurás una API Key:
 | **Vite** | ^5.4.0 | Build tool y servidor de desarrollo |
 | **Tesseract.js** | ^5.1.0 | Motor OCR local |
 | **pdfjs-dist** | ^6.3.289 | Renderizado de archivos PDF |
-| **SheetJS (xlsx)** | ^0.18.5 | Generación de archivos Excel |
+| **SheetJS (xlsx)** | 0.20.3 (CDN oficial) | Generación y lectura de archivos Excel; la versión de npm (0.18.5) tiene vulnerabilidades conocidas |
 | **idb** | ^8.0.0 | Envoltorio de IndexedDB para el historial |
 | **Workbox** | ^7.0.0 | Service worker para PWA |
 | **Express** | ^4.21.0 | Proxy local SENIAT (`server/`) |
@@ -486,6 +492,7 @@ DualLedger/
 | `npm start` | **Todo automático**: inicializa la BD + genera el build si falta `dist/` + sirve producción en `127.0.0.1:8787` (estático + `/api` + PostgreSQL, mismo origen) |
 | `npm run build` | Genera build de producción en `dist/` |
 | `npm run preview` | Vista previa del build de producción |
+| `npm test` | Ejecuta los tests unitarios con `node:test` (64 pruebas, 63 activas; el plan de cuentas se omite si falta el `.xls`) |
 
 > [!TIP]
 > Para **pruebas rápidas** solo necesitas `npm run dev`. La base de datos se inicializa sola
@@ -528,16 +535,23 @@ DualLedger/
 
 ### Testing
 
-Actualmente no hay tests automatizados. El testing es manual:
+Los tests unitarios se ejecutan con `npm test` (RIF, exportación/importación, maestros y plan de cuentas).
+La prueba del plan de cuentas necesita `Plan de Cuentas contables.xls` en la raíz; si el archivo no
+está presente (está ignorado por git), se omite con un aviso. El resto del testing es manual:
 
-1. Ejecutar `npm run dev`.
+1. Ejecutar `npm run dev` y entrar con `admin / admin123`.
 2. Probar el flujo completo: subir → procesar → editar → exportar.
-3. Subir una imagen y un **PDF** (verificar miniatura, número de páginas y previsualización).
-4. Verificar los **avisos flotantes**, los modales (que no cierren al hacer clic fuera) y el
-   **sonido** (activar/silenciar).
-5. Verificar la **edición de RIF** y la verificación SENIAT (incluido el captcha manual).
-6. Probar el resultado del procesamiento con archivos válidos e inválidos.
-7. Verificar en diferentes navegadores y probar el modo **offline** (PWA).
+3. En **Compras → Proveedores**, probar «+ Nuevo», la consulta al SENIAT, el guardado, la edición y la eliminación (los datos quedan en IndexedDB aunque PostgreSQL no esté levantado).
+4. En **Compras → Articulos**, probar «+ Nuevo», la importación de cuentas del plan de cuentas, la edición y la eliminación.
+5. En **Compras → Compras diarias**, pulsar «+ Nuevo», seleccionar proveedor y cuenta contable, importar artículos a Detalles, revisar las retenciones IVA/ISLR, imprimir los comprobantes y guardar. Verificar que la factura aparece en el Libro de Compras y que se puede reabrir con sus líneas y retenciones.
+6. En **Compras → Documentos no fiscales**, probar el alta de un recibo/ticket, la edición y la eliminación; verificar que no aparece en el Libro de Compras.
+7. En **Compras → Relación de gastos**, verificar que aparezcan las facturas y los comprobantes no fiscales, probar los filtros (fecha, origen, cuenta, deducibilidad), las pestañas «Por cuenta» y «Por mes», la exportación CSV y la impresión. Confirmar que el IVA no acreditable se muestra aparte del acreditable.
+8. En **Compras → CxP**, verificar los saldos derivados de las facturas, probar los filtros de vencimiento/proveedor, las pestañas «Por proveedor», «Por vencimiento» y «Por mes», además de la exportación CSV y la impresión. Confirmar que el saldo es total + IGTF − retenciones y que no se registran pagos.
+9. Subir una imagen y un **PDF** (verificar miniatura, número de páginas y previsualización).
+10. Verificar los **avisos flotantes**, los modales (que no cierren al hacer clic fuera) y el **sonido** (activar/silenciar).
+11. Verificar la **edición de RIF** y la verificación SENIAT (incluido el captcha manual).
+12. Probar el resultado del procesamiento con archivos válidos e inválidos.
+13. Verificar en diferentes navegadores y probar el modo **offline** (PWA).
 
 ---
 
@@ -576,6 +590,8 @@ Para problemas o preguntas:
 El historial completo y detallado de cambios está en **[CHANGELOG.md](CHANGELOG.md)**.
 
 ### Sin publicar
+- ✅ **CxP** con saldos, vencimientos, aging, filtros, agrupaciones y exportación (solo lectura)
+- ✅ **Relación de gastos** con filtros, resumen deducible/no deducible, agrupaciones y exportación
 - ✅ Entrada y procesamiento de **PDF** (cada página como factura)
 - ✅ Modales y **avisos flotantes** propios
 - ✅ **Aviso sonoro** silenciable al terminar el procesamiento

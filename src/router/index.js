@@ -4,6 +4,12 @@ import AppShell from '../components/AppShell.vue'
 import LoginView from '../components/LoginView.vue'
 import DashboardView from '../components/DashboardView.vue'
 import ProcesarPanel from '../components/ProcesarPanel.vue'
+import ArticulosView from '../components/ArticulosView.vue'
+import ComprasDiariasView from '../components/ComprasDiariasView.vue'
+import ProveedoresView from '../components/ProveedoresView.vue'
+import DocumentosNoFiscalesView from '../components/DocumentosNoFiscalesView.vue'
+import RelacionGastosView from '../components/RelacionGastosView.vue'
+import CxpView from '../components/CxpView.vue'
 import PlaceholderView from '../components/PlaceholderView.vue'
 import ConfigUsuariosView from '../components/ConfigUsuariosView.vue'
 import ConfigRolesView from '../components/ConfigRolesView.vue'
@@ -14,42 +20,48 @@ const comprasSubs = [
     name: 'compras-articulos',
     title: 'Articulos',
     icon: '&#128230;',
-    desc: 'Catálogo de artículos: alta, edición, precios y existencias.'
+    desc: 'Catálogo de artículos: alta, edición, precios y existencias.',
+    component: ArticulosView
   },
   {
     path: 'proveedores',
     name: 'compras-proveedores',
     title: 'Proveedores',
     icon: '&#127981;',
-    desc: 'Maestro de proveedores con datos fiscales y condiciones de compra.'
+    desc: 'Maestro de proveedores con datos fiscales y condiciones de compra.',
+    component: ProveedoresView
   },
   {
     path: 'documentos-no-fiscales',
     name: 'compras-documentos-no-fiscales',
     title: 'Documentos no fiscales',
     icon: '&#128196;',
-    desc: 'Registro de comprobantes no fiscales y documentos internos.'
+    desc: 'Registro de comprobantes no fiscales y documentos internos.',
+    component: DocumentosNoFiscalesView
   },
   {
     path: 'compras-diarias',
     name: 'compras-compras-diarias',
     title: 'Compras diarias',
     icon: '&#128197;',
-    desc: 'Registro de las compras realizadas en el día.'
+    desc: 'Registro de las compras realizadas en el día.',
+    component: ComprasDiariasView
   },
   {
     path: 'relacion-gastos',
     name: 'compras-relacion-gastos',
     title: 'Relación de gastos',
     icon: '&#128184;',
-    desc: 'Relación mensual de gastos deducibles y no deducibles.'
+    desc: 'Relación mensual de gastos deducibles y no deducibles.',
+    component: RelacionGastosView
   },
   {
     path: 'cxp',
     name: 'compras-cxp',
     title: 'CxP',
     icon: '&#128179;',
-    desc: 'Cuentas por pagar: saldos y vencimientos con proveedores.'
+    desc: 'Cuentas por pagar: saldos y vencimientos con proveedores.',
+    component: CxpView
   },
   {
     path: 'activos-fijos',
@@ -68,10 +80,15 @@ const comprasSubs = [
 ]
 
 const comprasSubRoutes = comprasSubs.map((c) => ({
-  path: c.path,
+  // El padre es '/', así que las rutas hijas deben incluir el prefijo
+  // 'compras/'; si no, quedan como '/proveedores' y el sidebar (que
+  // navega a '/compras/proveedores') cae en la ruta comodín.
+  path: `compras/${c.path}`,
   name: c.name,
-  component: PlaceholderView,
-  props: { title: c.title, icon: c.icon, description: c.desc }
+  component: c.component || PlaceholderView,
+  ...(c.component
+    ? {}
+    : { props: { title: c.title, icon: c.icon, description: c.desc } })
 }))
 
 const router = createRouter({

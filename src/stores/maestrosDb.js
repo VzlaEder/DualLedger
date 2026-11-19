@@ -4,7 +4,7 @@ import { openDB } from 'idb'
 // Se mantiene separada de "image-info-pwa" (stores/db.js) para no
 // conflictuar con su versión y permitir evolucionar el esquema con idb.
 const DB_NAME = 'dualledger-maestros'
-const DB_VERSION = 2
+const DB_VERSION = 4
 
 let dbPromise = null
 
@@ -41,6 +41,21 @@ function getDB() {
           store.createIndex('rif', 'rif')
           store.createIndex('estado', 'estado')
           store.createIndex('sincronizado', 'sincronizado')
+        }
+        // Comprobantes no fiscales: viven aparte del Libro de Compras.
+        if (!db.objectStoreNames.contains('documentosNoFiscales')) {
+          const store = db.createObjectStore('documentosNoFiscales', { keyPath: 'uid' })
+          store.createIndex('fecha', 'fecha')
+          store.createIndex('numero', 'numero')
+          store.createIndex('rif', 'rif')
+        }
+        // Maestro de artículos (cuentas imputables en las facturas de compra).
+        if (!db.objectStoreNames.contains('articulos')) {
+          const store = db.createObjectStore('articulos', { keyPath: 'uid' })
+          store.createIndex('codigo', 'codigo')
+          store.createIndex('nombre', 'nombre')
+          store.createIndex('tipo', 'tipo')
+          store.createIndex('grupoArticulos', 'grupoArticulos')
         }
       }
     })

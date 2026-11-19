@@ -161,8 +161,9 @@ export function prepararDocumento(record) {
     origen: record.origen || 'ocr',
     origenArchivo: record.origenArchivo || record.source || '',
     motorOcr: record.engine || '',
-    notas: record.note || '',
-    documentoPadreUid: record.documentoPadreUid || ''
+    notas: record.notas || record.note || '',
+    documentoPadreUid: record.documentoPadreUid || '',
+    payload: record.payload || {}
   }
 }
 
@@ -238,5 +239,18 @@ export async function guardarDocumento(documento) {
   } catch (e) {
     await agregarPendiente(TIPO_SYNC_COMPRAS, local, { uid: local.uid })
     return { documento: local, offline: true, error: e.message }
+  }
+}
+
+// Baja offline-first: se quita primero de IndexedDB para que la vista
+// nunca muestre un documento ya eliminado aunque la API esté caída.
+export async function eliminarDocumentoOffline(uid) {
+  await eliminarDocumentoLocal(uid)
+  try {
+    await deleteJson('/compras/documentos/' + encodeURIComponent(uid))
+    return { offline: false }
+  } catch (e) {
+    await agregarPendiente(TIPO_SYNC_COMPRAS + '_delete', { uid }, { uid, motivo: 'delete_documento' })
+    return { offline: true, error: e.message }
   }
 }

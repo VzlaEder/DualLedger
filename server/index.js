@@ -40,6 +40,12 @@ const FORM_URL = `${SENIAT_BASE}/BuscaRif/BuscaRif.jsp`
 const CAPTCHA_URL = `${SENIAT_BASE}/BuscaRif/Captcha.jpg`
 const SENIAT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
+// Algunos errores de red (p. ej. ECONNREFUSED de pg) tienen message vacío;
+// sin esto la API responde `{ error: "" }` y no se entiende qué pasó.
+function errText(e) {
+  return String((e && e.message) || (e && e.code) || e || 'Error desconocido')
+}
+
 const { Pool } = pg
 
 const databaseUrl = process.env.DATABASE_URL || dbAdmin.readEnvUrl()
@@ -47,7 +53,7 @@ let pool = null
 
 if (databaseUrl) {
   pool = dbAdmin.createPool(databaseUrl)
-  console.log('[Postgres] Conectado a la base de datos local')
+  console.log('[Postgres] Configurado (DATABASE_URL presente) - conexión bajo demanda')
 } else {
   console.warn('[Postgres] No configurado (falta DATABASE_URL) - cache deshabilitado')
 }
@@ -159,7 +165,7 @@ async function lookupCache(rif) {
       condicion: data.condicion
     }
   } catch (e) {
-    console.error('[Postgres] Lookup error:', e.message)
+    console.error('[Postgres] Lookup error:', errText(e))
     return null
   }
 }
@@ -177,7 +183,7 @@ async function saveCache(rif, data) {
       [rif, data.nombreRazon || '', data.porcentajeContribucion, data.condicion || '']
     )
   } catch (e) {
-    console.error('[Postgres] Save error:', e.message)
+    console.error('[Postgres] Save error:', errText(e))
   }
 }
 
@@ -223,8 +229,8 @@ router.post('/captcha', async (req, res) => {
 
     res.json({ ok: true, imageBase64: result.imageBase64, cookies: result.cookies })
   } catch (e) {
-    console.error('[Captcha] Error:', e.message)
-    res.status(502).json({ ok: false, error: 'No se pudo contactar el SENIAT', detail: String(e.message) })
+    console.error('[Captcha] Error:', errText(e))
+    res.status(502).json({ ok: false, error: 'No se pudo contactar el SENIAT', detail: errText(e) })
   }
 })
 
@@ -306,8 +312,8 @@ router.post('/verify', async (req, res) => {
     await saveCache(rif, data)
     return res.json({ ...data, ok: true })
   } catch (e) {
-    console.error('[Verify] Error:', e.message)
-    res.status(502).json({ ok: false, error: 'Falló la consulta al SENIAT', detail: String(e.message) })
+    console.error('[Verify] Error:', errText(e))
+    res.status(502).json({ ok: false, error: 'Falló la consulta al SENIAT', detail: errText(e) })
   }
 })
 
@@ -359,8 +365,8 @@ router.post('/accounts/sync', async (req, res) => {
     const result = await upsertCuentas(cuentas)
     res.json({ ok: true, ...result })
   } catch (e) {
-    console.error('[Accounts] sync error:', e.message)
-    res.status(500).json({ ok: false, error: String(e.message) })
+    console.error('[Accounts] sync error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -377,8 +383,8 @@ router.get('/accounts', async (req, res) => {
     )
     res.json({ ok: true, cuentas: rows })
   } catch (e) {
-    console.error('[Accounts] list error:', e.message)
-    res.status(500).json({ ok: false, error: String(e.message) })
+    console.error('[Accounts] list error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -419,8 +425,8 @@ router.post('/conceptos_islr/sync', async (req, res) => {
     const result = await upsertConceptos(conceptos)
     res.json({ ok: true, ...result })
   } catch (e) {
-    console.error('[ConceptosISLR] sync error:', e.message)
-    res.status(500).json({ ok: false, error: String(e.message) })
+    console.error('[ConceptosISLR] sync error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -444,8 +450,8 @@ router.get('/conceptos_islr', async (req, res) => {
       }))
     })
   } catch (e) {
-    console.error('[ConceptosISLR] list error:', e.message)
-    res.status(500).json({ ok: false, error: String(e.message) })
+    console.error('[ConceptosISLR] list error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -456,20 +462,33 @@ async function upsertProveedores(proveedores) {
   let updated = 0
   for (const p of proveedores) {
     const { rows } = await pool.query(
-      `INSERT INTO proveedores (rif, nombre, direccion, telefono, porcentaje_ret_iva, concepto_islr, codigo_cuenta, credito_fiscal_no_deducible, condicion, dias_credito)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO proveedores (
+         rif, nombre, direccion, direccion_fiscal, telefono, porcentaje_ret_iva,
+         concepto_islr, codigo_cuenta, credito_fiscal_no_deducible, condicion,
+         codigo_validacion, clasificacion, extranjero, dias_credito
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        ON CONFLICT (rif) DO UPDATE SET
          nombre = EXCLUDED.nombre,
          direccion = EXCLUDED.direccion,
+         direccion_fiscal = EXCLUDED.direccion_fiscal,
          telefono = EXCLUDED.telefono,
          porcentaje_ret_iva = EXCLUDED.porcentaje_ret_iva,
          concepto_islr = EXCLUDED.concepto_islr,
          codigo_cuenta = EXCLUDED.codigo_cuenta,
          credito_fiscal_no_deducible = EXCLUDED.credito_fiscal_no_deducible,
          condicion = EXCLUDED.condicion,
+         codigo_validacion = EXCLUDED.codigo_validacion,
+         clasificacion = EXCLUDED.clasificacion,
+         extranjero = EXCLUDED.extranjero,
          dias_credito = EXCLUDED.dias_credito
        RETURNING (xmax = 0) AS is_new`,
-      [p.rif, p.nombre || '', p.direccion || '', p.telefono || '', p.porcentajeRetIva ?? 75, p.conceptoIslr || null, p.codigoCuenta || null, p.creditoFiscalNoDeducible === true, p.condicion || '', p.diasCredito ?? 0]
+      [
+        p.rif, p.nombre || '', p.direccion || '', p.direccionFiscal || '', p.telefono || '',
+        p.porcentajeRetIva ?? 75, p.conceptoIslr || null, p.codigoCuenta || null,
+        p.creditoFiscalNoDeducible === true, p.condicion || '', p.codigoValidacion || '',
+        p.clasificacion || '', p.extranjero === true, p.diasCredito ?? 0
+      ]
     )
     if (rows[0].is_new) inserted++
     else updated++
@@ -490,8 +509,8 @@ router.post('/proveedores/sync', async (req, res) => {
     const result = await upsertProveedores(proveedores)
     res.json({ ok: true, ...result })
   } catch (e) {
-    console.error('[Proveedores] sync error:', e.message)
-    res.status(500).json({ ok: false, error: String(e.message) })
+    console.error('[Proveedores] sync error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -508,8 +527,8 @@ router.post('/proveedores/delete', async (req, res) => {
     const { rowCount } = await pool.query('DELETE FROM proveedores WHERE rif = ANY($1::text[])', [rifs])
     res.json({ ok: true, eliminados: rowCount || 0 })
   } catch (e) {
-    console.error('[Proveedores] delete error:', e.message)
-    res.status(500).json({ ok: false, error: String(e.message) })
+    console.error('[Proveedores] delete error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -519,7 +538,9 @@ router.get('/proveedores', async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT rif, nombre, direccion, telefono, porcentaje_ret_iva, concepto_islr, codigo_cuenta, credito_fiscal_no_deducible, condicion, dias_credito
+      `SELECT rif, nombre, direccion, direccion_fiscal, telefono, porcentaje_ret_iva,
+              concepto_islr, codigo_cuenta, credito_fiscal_no_deducible, condicion,
+              codigo_validacion, clasificacion, extranjero, dias_credito
        FROM proveedores
        ORDER BY nombre`
     )
@@ -529,18 +550,260 @@ router.get('/proveedores', async (req, res) => {
         rif: r.rif,
         nombre: r.nombre,
         direccion: r.direccion,
+        direccionFiscal: r.direccion_fiscal,
         telefono: r.telefono,
         porcentajeRetIva: Number(r.porcentaje_ret_iva),
         conceptoIslr: r.concepto_islr,
         codigoCuenta: r.codigo_cuenta,
         creditoFiscalNoDeducible: r.credito_fiscal_no_deducible,
         condicion: r.condicion,
+        codigoValidacion: r.codigo_validacion,
+        clasificacion: r.clasificacion,
+        extranjero: r.extranjero,
         diasCredito: r.dias_credito || 0
       }))
     })
   } catch (e) {
-    console.error('[Proveedores] list error:', e.message)
-    res.status(500).json({ ok: false, error: String(e.message) })
+    console.error('[Proveedores] list error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
+  }
+})
+
+// === Compras: Documentos no fiscales ===
+// Viven en su propia tabla: NO se exportan al Libro de Compras.
+
+async function upsertDocumentosNoFiscales(documentos) {
+  let inserted = 0
+  let updated = 0
+  for (const d of documentos) {
+    if (!d || !d.uid) continue
+    const { rows } = await pool.query(
+      `INSERT INTO documentos_no_fiscales (
+         uid, numero, fecha, tipo, rif, proveedor, concepto, monto,
+         codigo_cuenta, no_deducible, notas, archivo_nombre
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       ON CONFLICT (uid) DO UPDATE SET
+         numero = EXCLUDED.numero,
+         fecha = EXCLUDED.fecha,
+         tipo = EXCLUDED.tipo,
+         rif = EXCLUDED.rif,
+         proveedor = EXCLUDED.proveedor,
+         concepto = EXCLUDED.concepto,
+         monto = EXCLUDED.monto,
+         codigo_cuenta = EXCLUDED.codigo_cuenta,
+         no_deducible = EXCLUDED.no_deducible,
+         notas = EXCLUDED.notas,
+         archivo_nombre = EXCLUDED.archivo_nombre
+       RETURNING (xmax = 0) AS is_new`,
+      [
+        d.uid, d.numero || '', d.fecha || null, d.tipo || 'Recibo', d.rif || '',
+        d.proveedor || '', d.concepto || '', d.monto ?? 0, d.codigoCuenta || '',
+        d.noDeducible !== false, d.notas || '', d.archivoNombre || ''
+      ]
+    )
+    if (rows[0] && rows[0].is_new) inserted++
+    else updated++
+  }
+  return { inserted, updated }
+}
+
+router.post('/documentos-no-fiscales/sync', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  const body = req.body
+  const docs = Array.isArray(body) ? body : (body && Array.isArray(body.documentos) ? body.documentos : null)
+  if (!docs || !docs.length) {
+    return res.status(400).json({ ok: false, error: 'Sin documentos para sincronizar' })
+  }
+  try {
+    res.json({ ok: true, ...(await upsertDocumentosNoFiscales(docs)) })
+  } catch (e) {
+    console.error('[DocNoFiscal] sync error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
+  }
+})
+
+router.post('/documentos-no-fiscales/delete', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  const body = req.body
+  const uids = Array.isArray(body) ? body : (body && Array.isArray(body.uid) ? body.uid : null)
+  if (!uids || !uids.length) {
+    return res.status(400).json({ ok: false, error: 'Sin UIDs para eliminar' })
+  }
+  try {
+    const { rowCount } = await pool.query(
+      'DELETE FROM documentos_no_fiscales WHERE uid = ANY($1::text[])',
+      [uids]
+    )
+    res.json({ ok: true, eliminados: rowCount || 0 })
+  } catch (e) {
+    console.error('[DocNoFiscal] delete error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
+  }
+})
+
+router.get('/documentos-no-fiscales', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT uid, numero, fecha, tipo, rif, proveedor, concepto, monto,
+              codigo_cuenta, no_deducible, notas, archivo_nombre
+       FROM documentos_no_fiscales
+       ORDER BY fecha DESC, numero`
+    )
+    res.json({
+      ok: true,
+      documentos: rows.map((r) => ({
+        uid: r.uid,
+        numero: r.numero,
+        fecha: r.fecha ? String(r.fecha).slice(0, 10) : '',
+        tipo: r.tipo,
+        rif: r.rif,
+        proveedor: r.proveedor,
+        concepto: r.concepto,
+        monto: Number(r.monto),
+        codigoCuenta: r.codigo_cuenta,
+        noDeducible: r.no_deducible,
+        notas: r.notas,
+        archivoNombre: r.archivo_nombre
+      }))
+    })
+  } catch (e) {
+    console.error('[DocNoFiscal] list error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
+  }
+})
+
+// === Compras: Maestro de Artículos ===
+// Los artículos son las cuentas contables imputables en una factura.
+
+async function upsertArticulos(articulos) {
+  let inserted = 0
+  let updated = 0
+  for (const a of articulos) {
+    if (!a || !a.uid || !a.codigo) continue
+    const { rows } = await pool.query(
+      `INSERT INTO articulos (
+         uid, codigo, descripcion, nombre, tipo, para_venta, iva,
+         grupo_articulos, presentacion_modelo, almacen_inicial, medida,
+         factor_conversion, marca, precio_venta, stock_maximo, stock_minimo,
+         existencia, centro_costo_venta, centro_costo_compra
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       ON CONFLICT (codigo) DO UPDATE SET
+         descripcion = EXCLUDED.descripcion,
+         nombre = EXCLUDED.nombre,
+         tipo = EXCLUDED.tipo,
+         para_venta = EXCLUDED.para_venta,
+         iva = EXCLUDED.iva,
+         grupo_articulos = EXCLUDED.grupo_articulos,
+         presentacion_modelo = EXCLUDED.presentacion_modelo,
+         almacen_inicial = EXCLUDED.almacen_inicial,
+         medida = EXCLUDED.medida,
+         factor_conversion = EXCLUDED.factor_conversion,
+         marca = EXCLUDED.marca,
+         precio_venta = EXCLUDED.precio_venta,
+         stock_maximo = EXCLUDED.stock_maximo,
+         stock_minimo = EXCLUDED.stock_minimo,
+         existencia = EXCLUDED.existencia,
+         centro_costo_venta = EXCLUDED.centro_costo_venta,
+         centro_costo_compra = EXCLUDED.centro_costo_compra
+       RETURNING (xmax = 0) AS is_new`,
+      [
+        a.uid, a.codigo, a.descripcion || '', a.nombre || '', a.tipo || 'Servicio',
+        a.paraVenta === true, a.iva || 'No aplica', a.grupoArticulos || '',
+        a.presentacionModelo || '', a.almacenInicial || '', a.medida || '',
+        a.factorConversion ?? 1, a.marca || '', a.precioVenta ?? 0,
+        a.stockMaximo ?? 0, a.stockMinimo ?? 0, a.existencia ?? 0,
+        a.centroCostoVenta || '', a.centroCostoCompra || ''
+      ]
+    )
+    if (rows[0] && rows[0].is_new) inserted++
+    else updated++
+  }
+  return { inserted, updated }
+}
+
+router.post('/articulos/sync', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  const body = req.body
+  const lista = Array.isArray(body) ? body : (body && Array.isArray(body.articulos) ? body.articulos : null)
+  if (!lista || !lista.length) {
+    return res.status(400).json({ ok: false, error: 'Sin artículos para sincronizar' })
+  }
+  try {
+    res.json({ ok: true, ...(await upsertArticulos(lista)) })
+  } catch (e) {
+    console.error('[Articulos] sync error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
+  }
+})
+
+router.post('/articulos/delete', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  const body = req.body
+  const uids = Array.isArray(body) ? body : (body && Array.isArray(body.uid) ? body.uid : null)
+  if (!uids || !uids.length) {
+    return res.status(400).json({ ok: false, error: 'Sin UIDs para eliminar' })
+  }
+  try {
+    const { rowCount } = await pool.query('DELETE FROM articulos WHERE uid = ANY($1::text[])', [uids])
+    res.json({ ok: true, eliminados: rowCount || 0 })
+  } catch (e) {
+    console.error('[Articulos] delete error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
+  }
+})
+
+router.get('/articulos', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT uid, codigo, descripcion, nombre, tipo, para_venta, iva,
+              grupo_articulos, presentacion_modelo, almacen_inicial, medida,
+              factor_conversion, marca, precio_venta, stock_maximo, stock_minimo,
+              existencia, centro_costo_venta, centro_costo_compra
+       FROM articulos ORDER BY codigo`
+    )
+    res.json({
+      ok: true,
+      articulos: rows.map((r) => ({
+        uid: r.uid,
+        codigo: r.codigo,
+        descripcion: r.descripcion,
+        nombre: r.nombre,
+        tipo: r.tipo,
+        paraVenta: r.para_venta,
+        iva: r.iva,
+        grupoArticulos: r.grupo_articulos,
+        presentacionModelo: r.presentacion_modelo,
+        almacenInicial: r.almacen_inicial,
+        medida: r.medida,
+        factorConversion: Number(r.factor_conversion),
+        marca: r.marca,
+        precioVenta: Number(r.precio_venta),
+        stockMaximo: Number(r.stock_maximo),
+        stockMinimo: Number(r.stock_minimo),
+        existencia: Number(r.existencia),
+        centroCostoVenta: r.centro_costo_venta,
+        centroCostoCompra: r.centro_costo_compra
+      }))
+    })
+  } catch (e) {
+    console.error('[Articulos] list error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -576,8 +839,8 @@ router.post('/parametros/sync', async (req, res) => {
     const result = await upsertParametros(parametros)
     res.json({ ok: true, ...result })
   } catch (e) {
-    console.error('[Parametros] sync error:', e.message)
-    res.status(500).json({ ok: false, error: String(e.message) })
+    console.error('[Parametros] sync error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -589,8 +852,8 @@ router.get('/parametros', async (req, res) => {
     const { rows } = await pool.query('SELECT clave, valor FROM parametros')
     res.json({ ok: true, parametros: rows.map(r => ({ clave: r.clave, valor: r.valor })) })
   } catch (e) {
-    console.error('[Parametros] list error:', e.message)
-    res.status(500).json({ ok: false, error: String(e.message) })
+    console.error('[Parametros] list error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -682,7 +945,7 @@ router.post('/admin/db/up', async (req, res) => {
   } catch (e) {
     res.status(500).json({
       ok: false,
-      error: String(e.message),
+      error: errText(e),
       hint: 'Puedes levantar Postgres con Docker Desktop o conectar una DATABASE_URL externa desde "Conexión manual".'
     })
   }
@@ -693,7 +956,7 @@ router.post('/admin/db/down', async (req, res) => {
     await dbAdmin.dockerComposeDown()
     res.json({ ok: true })
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message) })
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -711,7 +974,7 @@ router.post('/admin/db/connect', async (req, res) => {
     await dbAdmin.applySchema(pool)
     res.json({ ok: true, url: maskUrl(url) })
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message) })
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -730,7 +993,7 @@ router.get('/admin/tables', async (req, res) => {
   try {
     res.json({ ok: true, tables: await dbAdmin.listTables(p) })
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message) })
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -748,7 +1011,7 @@ router.get('/admin/tables/:name', async (req, res) => {
     const rows = await dbAdmin.fetchRows(p, name, { limit, offset, order })
     res.json({ ok: true, table: info, total, limit, offset, rows })
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message) })
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -766,7 +1029,7 @@ router.post('/admin/tables/:name/rows', async (req, res) => {
     const created = await dbAdmin.insertRow(p, info, row)
     res.status(201).json({ ok: true, row: created })
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message) })
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -785,7 +1048,7 @@ router.put('/admin/tables/:name/rows', async (req, res) => {
     if (!updated) return res.status(404).json({ ok: false, error: 'Fila no encontrada' })
     res.json({ ok: true, row: updated })
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message) })
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -808,7 +1071,7 @@ router.delete('/admin/tables/:name/rows', async (req, res) => {
     const deleted = await dbAdmin.deleteRows(p, info, keys)
     res.json({ ok: true, deleted })
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message) })
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -840,7 +1103,7 @@ router.get('/admin/export/all', async (req, res) => {
       res.send(ed.catalogToSql(tables))
     }
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message) })
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -864,7 +1127,7 @@ router.get('/admin/export/:name', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${name}.${fmt}"`)
     res.send(content)
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message) })
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 
@@ -878,7 +1141,7 @@ router.post('/admin/import/sql', async (req, res) => {
     await p.query(content)
     res.json({ ok: true })
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message).slice(0, 500) })
+    res.status(500).json({ ok: false, error: errText(e).slice(0, 500) })
   }
 })
 
@@ -909,7 +1172,7 @@ router.post('/admin/import/:name', async (req, res) => {
     const imported = await dbAdmin.upsertRows(p, info, rows)
     res.json({ ok: true, imported })
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message) })
+    res.status(500).json({ ok: false, error: errText(e) })
   }
 })
 

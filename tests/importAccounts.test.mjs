@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePlanDeCuentasBuf, parseCodigoCuenta, normalizarNombre } from '../src/services/importAccounts.js'
@@ -20,7 +20,9 @@ test('normalizarNombre corrige ¢→ó y espacios', () => {
   assert.equal(normalizarNombre('  Gastos De Representaci¢n  '), 'Gastos De Representación')
 })
 
-test('el plan de cuentas se parsea completo y consistente', () => {
+test('el plan de cuentas se parsea completo y consistente', {
+  skip: !existsSync(DOC) && 'Requiere "Plan de Cuentas contables.xls" en la raíz (archivo ignorado por git)'
+}, () => {
   const buf = readFileSync(DOC)
   const { cuentas, resumen } = parsePlanDeCuentasBuf(buf)
 

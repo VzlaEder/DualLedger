@@ -226,6 +226,9 @@ function toDoc(row) {
     motorOcr: row.motor_ocr,
     notas: row.notas,
     documentoPadreUid: row.documento_padre_uid || '',
+    // La ficha de Compras diarias guarda aquí su factura original,
+    // totales, líneas y retenciones para poder reabrirla en edición.
+    payload: row.payload || {},
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
