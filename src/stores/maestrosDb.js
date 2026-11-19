@@ -4,7 +4,7 @@ import { openDB } from 'idb'
 // Se mantiene separada de "image-info-pwa" (stores/db.js) para no
 // conflictuar con su versión y permitir evolucionar el esquema con idb.
 const DB_NAME = 'dualledger-maestros'
-const DB_VERSION = 4
+const DB_VERSION = 5
 
 let dbPromise = null
 
@@ -56,6 +56,14 @@ function getDB() {
           store.createIndex('nombre', 'nombre')
           store.createIndex('tipo', 'tipo')
           store.createIndex('grupoArticulos', 'grupoArticulos')
+        }
+        // Activos fijos: alta, depreciación derivada y cuentas contables.
+        if (!db.objectStoreNames.contains('activosFijos')) {
+          const store = db.createObjectStore('activosFijos', { keyPath: 'uid' })
+          store.createIndex('codigo', 'codigo')
+          store.createIndex('categoria', 'categoria')
+          store.createIndex('estado', 'estado')
+          store.createIndex('fechaAdquisicion', 'fechaAdquisicion')
         }
       }
     })

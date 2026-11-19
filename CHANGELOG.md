@@ -79,6 +79,22 @@
 
 ### 🆕 Añadido
 
+#### 🏢 Módulo de Activos Fijos (Compras)
+
+- La sección **Compras → Activos Fijos** deja de ser un placeholder y pasa a ser una vista real.
+- **Ficha de alta/edición** con tres pestañas: *Datos del activo*, *Depreciación* y *Contabilidad*.
+- **Depreciación derivada** en línea recta o saldo decreciente, con tasa automática según la vida
+  útil, valor residual, topes por base depreciable y regla de no depreciación para terrenos.
+- **Tabla anual de depreciación** y vista previa en vivo del costo total, la base, la tasa, la
+  cuota mensual, lo acumulado y el valor neto.
+- **Cuentas contables vinculadas** al plan de cuentas: activo, depreciación acumulada, gasto por
+  depreciación y centro de costo.
+- **Listado** con filtros por categoría, estado, cuenta y fecha de corte, más resumen de costos,
+  depreciación y valor neto, exportación a CSV e impresión.
+- **Persistencia offline-first** en IndexedDB con sincronización a la API y cola de reintentos;
+  migración `0006_activos_fijos.sql` y rutas `/activos-fijos` en el servidor.
+- `17` pruebas nuevas de la lógica de depreciación y validación.
+
 #### 📄 Entrada de documentos PDF
 
 - El área de carga ahora acepta `image/*` **y** `application/pdf`.

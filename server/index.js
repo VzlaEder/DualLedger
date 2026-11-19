@@ -807,6 +807,148 @@ router.get('/articulos', async (req, res) => {
   }
 })
 
+// === Compras: Maestro de Activos Fijos ===
+// La depreciación se calcula en el cliente; aquí solo se persiste la ficha.
+
+async function upsertActivosFijos(activos) {
+  let inserted = 0
+  let updated = 0
+  for (const a of activos) {
+    if (!a || !a.uid || !a.codigo) continue
+    const { rows } = await pool.query(
+      `INSERT INTO activos_fijos (
+         uid, codigo, descripcion, categoria, fecha_adquisicion,
+         fecha_puesta_en_servicio, rif_proveedor, proveedor, numero_factura,
+         costo_adquisicion, gastos_capitalizables, valor_residual, vida_util_anos,
+         metodo_depreciacion, tasa_depreciacion_anual, cuenta_activo,
+         cuenta_depreciacion_acumulada, cuenta_gasto_depreciacion,
+         centro_costo, ubicacion, responsable, estado, observaciones
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+       ON CONFLICT (codigo) DO UPDATE SET
+         descripcion = EXCLUDED.descripcion,
+         categoria = EXCLUDED.categoria,
+         fecha_adquisicion = EXCLUDED.fecha_adquisicion,
+         fecha_puesta_en_servicio = EXCLUDED.fecha_puesta_en_servicio,
+         rif_proveedor = EXCLUDED.rif_proveedor,
+         proveedor = EXCLUDED.proveedor,
+         numero_factura = EXCLUDED.numero_factura,
+         costo_adquisicion = EXCLUDED.costo_adquisicion,
+         gastos_capitalizables = EXCLUDED.gastos_capitalizables,
+         valor_residual = EXCLUDED.valor_residual,
+         vida_util_anos = EXCLUDED.vida_util_anos,
+         metodo_depreciacion = EXCLUDED.metodo_depreciacion,
+         tasa_depreciacion_anual = EXCLUDED.tasa_depreciacion_anual,
+         cuenta_activo = EXCLUDED.cuenta_activo,
+         cuenta_depreciacion_acumulada = EXCLUDED.cuenta_depreciacion_acumulada,
+         cuenta_gasto_depreciacion = EXCLUDED.cuenta_gasto_depreciacion,
+         centro_costo = EXCLUDED.centro_costo,
+         ubicacion = EXCLUDED.ubicacion,
+         responsable = EXCLUDED.responsable,
+         estado = EXCLUDED.estado,
+         observaciones = EXCLUDED.observaciones
+       RETURNING (xmax = 0) AS is_new`,
+      [
+        a.uid, a.codigo, a.descripcion || '', a.categoria || 'Otros',
+        a.fechaAdquisicion || '', a.fechaPuestaEnServicio || '',
+        a.rifProveedor || '', a.proveedor || '', a.numeroFactura || '',
+        a.costoAdquisicion ?? 0, a.gastosCapitalizables ?? 0, a.valorResidual ?? 0,
+        a.vidaUtilAnos ?? 0, a.metodoDepreciacion || 'Linea recta',
+        a.tasaDepreciacionAnual ?? 0, a.cuentaActivo || '',
+        a.cuentaDepreciacionAcumulada || '', a.cuentaGastoDepreciacion || '',
+        a.centroCosto || '', a.ubicacion || '', a.responsable || '',
+        a.estado || 'Activo', a.observaciones || ''
+      ]
+    )
+    if (rows[0] && rows[0].is_new) inserted++
+    else updated++
+  }
+  return { inserted, updated }
+}
+
+router.post('/activos-fijos/sync', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  const body = req.body
+  const lista = Array.isArray(body) ? body : (body && Array.isArray(body.activos) ? body.activos : null)
+  if (!lista || !lista.length) {
+    return res.status(400).json({ ok: false, error: 'Sin activos fijos para sincronizar' })
+  }
+  try {
+    res.json({ ok: true, ...(await upsertActivosFijos(lista)) })
+  } catch (e) {
+    console.error('[ActivosFijos] sync error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
+  }
+})
+
+router.post('/activos-fijos/delete', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  const body = req.body
+  const uids = Array.isArray(body) ? body : (body && Array.isArray(body.uid) ? body.uid : null)
+  if (!uids || !uids.length) {
+    return res.status(400).json({ ok: false, error: 'Sin UIDs para eliminar' })
+  }
+  try {
+    const { rowCount } = await pool.query('DELETE FROM activos_fijos WHERE uid = ANY($1::text[])', [uids])
+    res.json({ ok: true, eliminados: rowCount || 0 })
+  } catch (e) {
+    console.error('[ActivosFijos] delete error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
+  }
+})
+
+router.get('/activos-fijos', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ ok: false, error: 'PostgreSQL no configurado (falta DATABASE_URL)' })
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT uid, codigo, descripcion, categoria, fecha_adquisicion,
+              fecha_puesta_en_servicio, rif_proveedor, proveedor, numero_factura,
+              costo_adquisicion, gastos_capitalizables, valor_residual, vida_util_anos,
+              metodo_depreciacion, tasa_depreciacion_anual, cuenta_activo,
+              cuenta_depreciacion_acumulada, cuenta_gasto_depreciacion,
+              centro_costo, ubicacion, responsable, estado, observaciones
+       FROM activos_fijos ORDER BY codigo`
+    )
+    res.json({
+      ok: true,
+      activos: rows.map((r) => ({
+        uid: r.uid,
+        codigo: r.codigo,
+        descripcion: r.descripcion,
+        categoria: r.categoria,
+        fechaAdquisicion: r.fecha_adquisicion,
+        fechaPuestaEnServicio: r.fecha_puesta_en_servicio,
+        rifProveedor: r.rif_proveedor,
+        proveedor: r.proveedor,
+        numeroFactura: r.numero_factura,
+        costoAdquisicion: Number(r.costo_adquisicion),
+        gastosCapitalizables: Number(r.gastos_capitalizables),
+        valorResidual: Number(r.valor_residual),
+        vidaUtilAnos: Number(r.vida_util_anos),
+        metodoDepreciacion: r.metodo_depreciacion,
+        tasaDepreciacionAnual: Number(r.tasa_depreciacion_anual),
+        cuentaActivo: r.cuenta_activo,
+        cuentaDepreciacionAcumulada: r.cuenta_depreciacion_acumulada,
+        cuentaGastoDepreciacion: r.cuenta_gasto_depreciacion,
+        centroCosto: r.centro_costo,
+        ubicacion: r.ubicacion,
+        responsable: r.responsable,
+        estado: r.estado,
+        observaciones: r.observaciones
+      }))
+    })
+  } catch (e) {
+    console.error('[ActivosFijos] list error:', errText(e))
+    res.status(500).json({ ok: false, error: errText(e) })
+  }
+})
+
 // === Maestros: Parámetros (empresa, UT, tasas) ===
 
 async function upsertParametros(parametros) {

@@ -50,6 +50,7 @@
 - **Documentos no fiscales (Compras → Documentos no fiscales):** Registro offline-first de recibos, tickets y comprobantes sin factura fiscal. Se guardan en su propia tabla y **no entran al Libro de Compras**.
 - **Relación de gastos (Compras → Relación de gastos):** Reporte de solo lectura que consolida las facturas del Libro de Compras y los documentos no fiscales en gastos deducibles / no deducibles. Incluye filtros por fecha, origen, cuenta y deducibilidad, resumen mensual, agrupación por cuenta/periodo y exportación CSV o impresión. El manual no describe esta sección: se deriva de los datos ya registrados, sin crear campos nuevos.
 - **CxP (Compras → CxP):** Consulta de solo lectura de cuentas por pagar derivada del Libro de Compras y del maestro de proveedores. Calcula vencimientos (fecha de la factura o días de crédito), saldo neto (total + IGTF − retenciones), estado (vencido, por vencer, sin vencimiento, pagado) y aging. Incluye filtros, resumen, agrupación por proveedor/antigüedad/periodo y exportación CSV o impresión. No registra pagos ni abonos.
+- **Activos Fijos (Compras → Activos Fijos):** Maestro offline-first de activos con alta/edición, depreciación derivada (línea recta o saldo decreciente), tabla anual, valor neto en libros y cuentas contables vinculadas al plan de cuentas. Incluye filtros, resumen, exportación CSV e impresión. El manual no describe esta sección: se deriva del diseño general de la app.
 - **PWA Offline-First:** Funciona sin conexión después de la carga inicial
 - **Exportación Excel:** Genera archivos .xlsx en formato Libro de Compras venezolano
 - **Historial de Exportaciones:** Registro persistente en IndexedDB
@@ -492,7 +493,7 @@ DualLedger/
 | `npm start` | **Todo automático**: inicializa la BD + genera el build si falta `dist/` + sirve producción en `127.0.0.1:8787` (estático + `/api` + PostgreSQL, mismo origen) |
 | `npm run build` | Genera build de producción en `dist/` |
 | `npm run preview` | Vista previa del build de producción |
-| `npm test` | Ejecuta los tests unitarios con `node:test` (75 pruebas, 74 activas; el plan de cuentas se omite si falta el `.xls`) |
+| `npm test` | Ejecuta los tests unitarios con `node:test` (92 pruebas, 91 activas; el plan de cuentas se omite si falta el `.xls`) |
 
 > [!TIP]
 > Para **pruebas rápidas** solo necesitas `npm run dev`. La base de datos se inicializa sola
@@ -547,6 +548,8 @@ está presente (está ignorado por git), se omite con un aviso. El resto del tes
 6. En **Compras → Documentos no fiscales**, probar el alta de un recibo/ticket, la edición y la eliminación; verificar que no aparece en el Libro de Compras.
 7. En **Compras → Relación de gastos**, verificar que aparezcan las facturas y los comprobantes no fiscales, probar los filtros (fecha, origen, cuenta, deducibilidad), las pestañas «Por cuenta» y «Por mes», la exportación CSV y la impresión. Confirmar que el IVA no acreditable se muestra aparte del acreditable.
 8. En **Compras → CxP**, verificar los saldos derivados de las facturas, probar los filtros de vencimiento/proveedor, las pestañas «Por proveedor», «Por vencimiento» y «Por mes», además de la exportación CSV y la impresión. Confirmar que el saldo es total + IGTF − retenciones y que no se registran pagos.
+
+9. En **Compras → Activos Fijos**, dar de alta un activo con costo, gastos capitalizables, valor residual y vida útil; revisar en la pestaña «Depreciación» que la tasa, la cuota mensual, el acumulado y el valor neto sean coherentes con la tabla anual. Verificar los filtros, el resumen, la exportación CSV y la impresión.
 9. Subir una imagen y un **PDF** (verificar miniatura, número de páginas y previsualización).
 10. Verificar los **avisos flotantes**, los modales (que no cierren al hacer clic fuera) y el **sonido** (activar/silenciar).
 11. Verificar la **edición de RIF** y la verificación SENIAT (incluido el captcha manual).
@@ -590,6 +593,7 @@ Para problemas o preguntas:
 El historial completo y detallado de cambios está en **[CHANGELOG.md](CHANGELOG.md)**.
 
 ### Sin publicar
+- ✅ **Activos Fijos** con depreciación derivada, tabla anual, cuentas contables y exportación
 - ✅ **CxP** con saldos, vencimientos, aging, filtros, agrupaciones y exportación (solo lectura)
 - ✅ **Relación de gastos** con filtros, resumen deducible/no deducible, agrupaciones y exportación
 - ✅ Entrada y procesamiento de **PDF** (cada página como factura)
