@@ -1,21 +1,20 @@
 <template>
   <div class="art-view">
-    <div class="art-head">
-      <div>
-        <h2>Articulos</h2>
-        <p class="sub">
-          Comprende las cuentas contables que serán seleccionadas de acuerdo al concepto
-          de la factura a registrar (manual 1.1).
-        </p>
-      </div>
-      <div class="head-actions">
+    <ReportHeader
+      title="Artículos"
+      icon="&#128230;"
+      badge="Catálogo · artículos"
+      accent="#4f46e5"
+      subtitle="Comprende las cuentas contables que serán seleccionadas de acuerdo al concepto de la factura a registrar (manual 1.1)."
+    >
+      <template #actions>
         <button class="btn" :disabled="cargando" @click="cargar">Recargar</button>
         <button class="btn" :disabled="cargando || importando" @click="importarCuentas">
           {{ importando ? 'Importando…' : 'Importar cuentas' }}
         </button>
         <button class="btn btn-primary" @click="nuevo">+ Nuevo</button>
-      </div>
-    </div>
+      </template>
+    </ReportHeader>
 
     <!-- ===== Listado (captura "Artículos") ===== -->
     <div v-if="!editando" class="card">
@@ -297,6 +296,7 @@
 
 <script>
 import AccountSelector from './AccountSelector.vue'
+import ReportHeader from './ReportHeader.vue'
 import { getJson, postJson } from '../utils/api.js'
 import { showAlert, showConfirm, showToast } from '../utils/dialog.js'
 import { agregarPendiente, getCuentas } from '../stores/maestrosDb.js'
@@ -316,7 +316,7 @@ import {
 
 export default {
   name: 'ArticulosView',
-  components: { AccountSelector },
+  components: { AccountSelector, ReportHeader },
   data() {
     return {
       articulos: [],
@@ -539,10 +539,7 @@ export default {
 
 <style scoped>
 .art-view { display: flex; flex-direction: column; gap: 16px; }
-.art-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.art-head h2 { margin: 0 0 4px; font-size: 1.35rem; }
-.sub { margin: 0; color: var(--text-secondary); font-size: 0.88rem; max-width: 620px; }
-.head-actions, .ficha-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.ficha-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -655,8 +652,8 @@ export default {
 .modal-item:hover { border-color: var(--primary); }
 @media (max-width: 860px) {
   .filtros { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .art-head, .ficha-head { flex-direction: column; }
-  .head-actions, .ficha-actions { justify-content: flex-start; }
+  .ficha-head { flex-direction: column; }
+  .ficha-actions { justify-content: flex-start; }
 }
 @media (max-width: 620px) {
   .filtros, .grid { grid-template-columns: 1fr; }

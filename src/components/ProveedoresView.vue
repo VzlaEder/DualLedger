@@ -1,18 +1,17 @@
 <template>
   <div class="prov-view">
-    <div class="prov-head">
-      <div>
-        <h2>Proveedores</h2>
-        <p class="sub">
-          Registro de proveedores con validación de RIF en el SENIAT, retenciones de IVA e ISLR
-          y cuenta contable asignada.
-        </p>
-      </div>
-      <div class="head-actions">
+    <ReportHeader
+      title="Proveedores"
+      icon="&#128101;"
+      badge="Maestro · proveedores"
+      accent="#0891b2"
+      subtitle="Registro de proveedores con validación de RIF en el SENIAT, retenciones de IVA e ISLR y cuenta contable asignada."
+    >
+      <template #actions>
         <button class="btn" :disabled="cargando" @click="cargar">Recargar</button>
         <button class="btn btn-primary" @click="nuevo">+ Nuevo</button>
-      </div>
-    </div>
+      </template>
+    </ReportHeader>
 
     <div v-if="!editando" class="card">
       <div class="toolbar">
@@ -230,6 +229,7 @@
 
 <script>
 import AccountSelector from './AccountSelector.vue'
+import ReportHeader from './ReportHeader.vue'
 import { getJson, postJson } from '../utils/api.js'
 import { showAlert, showConfirm, showToast } from '../utils/dialog.js'
 import { formatearRif } from '../services/rif.js'
@@ -253,7 +253,7 @@ import {
 
 export default {
   name: 'ProveedoresView',
-  components: { AccountSelector },
+  components: { AccountSelector, ReportHeader },
   data() {
     return {
       proveedores: [],
@@ -454,10 +454,7 @@ export default {
 
 <style scoped>
 .prov-view { display: flex; flex-direction: column; gap: 16px; }
-.prov-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.prov-head h2 { margin: 0 0 4px; font-size: 1.35rem; }
-.sub { margin: 0; color: var(--text-secondary); font-size: 0.88rem; max-width: 620px; }
-.head-actions, .ficha-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ficha-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -542,7 +539,7 @@ export default {
 .check-line { display: flex; align-items: center; gap: 7px; font-size: 0.84rem; }
 .pendiente { color: var(--text-secondary); font-size: 0.88rem; }
 @media (max-width: 720px) {
-  .prov-head, .ficha-head { flex-direction: column; }
+  .ficha-head { flex-direction: column; }
   .grid { grid-template-columns: 1fr; }
 }
 </style>
