@@ -10,6 +10,7 @@ import ProveedoresView from '../components/ProveedoresView.vue'
 import DocumentosNoFiscalesView from '../components/DocumentosNoFiscalesView.vue'
 import RelacionGastosView from '../components/RelacionGastosView.vue'
 import CxpView from '../components/CxpView.vue'
+import ActivosFijosView from '../components/ActivosFijosView.vue'
 import PlaceholderView from '../components/PlaceholderView.vue'
 import ConfigUsuariosView from '../components/ConfigUsuariosView.vue'
 import ConfigRolesView from '../components/ConfigRolesView.vue'
@@ -68,7 +69,8 @@ const comprasSubs = [
     name: 'compras-activos-fijos',
     title: 'Activos Fijos',
     icon: '&#127970;',
-    desc: 'Registro y depreciación del activo fijo de la empresa.'
+    desc: 'Registro y depreciación del activo fijo de la empresa.',
+    component: ActivosFijosView
   },
   {
     path: 'retenciones-trabajadores',

@@ -66,15 +66,16 @@ Este archivo resume todo el trabajo realizado en el módulo **Compras** para que
 |---|---|
 | `src/stores/documentosNoFiscalesDb.js` | `documentosNoFiscales` |
 | `src/stores/articulosDb.js` | `articulos` |
+| `src/stores/activosFijosDb.js` | `activosFijos` |
 
-`src/stores/maestrosDb.js` quedó en `DB_VERSION = 4` y contiene:
-`cuentas`, `proveedores`, `conceptosIslr`, `parametros`, `syncQueue`, `comprasDocumentos`, `documentosNoFiscales`, `articulos`.
+`src/stores/maestrosDb.js` quedó en `DB_VERSION = 5` y contiene:
+`cuentas`, `proveedores`, `conceptosIslr`, `parametros`, `syncQueue`, `comprasDocumentos`, `documentosNoFiscales`, `articulos`, `activosFijos`.
 
 ### Rutas API (servidor)
 
 | Archivo | Rutas |
 |---|---|
-| `server/index.js` | SENIAT (`/captcha`, `/lookup`, `/verify`), maestros (`/accounts*`, `/conceptos_islr*`, `/proveedores*`, `/documentos-no-fiscales*`, `/articulos*`, `/parametros*`) y admin DB (`/api/admin/*`) |
+| `server/index.js` | SENIAT (`/captcha`, `/lookup`, `/verify`), maestros (`/accounts*`, `/conceptos_islr*`, `/proveedores*`, `/documentos-no-fiscales*`, `/articulos*`, `/activos-fijos*`, `/parametros*`) y admin DB (`/api/admin/*`) |
 | `server/routes/compras.js` | `GET/POST/PUT/DELETE /compras/documentos`, `/resumen`, `/:uid`, `/sync` |
 
 Nota: no existen archivos `server/routes/proveedores.js`, `documentosNoFiscales.js` ni `articulos.js`; esas rutas viven en `server/index.js`.
@@ -95,6 +96,7 @@ Se aplican solas cuando PostgreSQL esté disponible.
 - `tests/comprasDiarias.test.mjs`
 - `tests/relacionGastos.test.mjs`
 - `tests/cxp.test.mjs`
+- `tests/activosFijos.test.mjs`
 
 ---
 
@@ -195,7 +197,7 @@ Se aplican solas cuando PostgreSQL esté disponible.
 
 ## 7. Estado actual de verificación
 
-- `npm test`: **75 pruebas, 74 pasan, 1 omitida**.
+- `npm test`: **92 pruebas, 91 pasan, 1 omitida**.
   - La omitida es `el plan de cuentas se parsea completo y consistente`, que requiere `Plan de Cuentas contables.xls` en la raíz (archivo ignorado).
 - `npm run build`: correcto (solo advertencia habitual de chunk > 500 kB).
 - Navegador verificado en `http://127.0.0.1:3000/#/compras/cxp`:
@@ -215,12 +217,12 @@ Se aplican solas cuando PostgreSQL esté disponible.
 - Auth: solo en memoria; al recargar vuelve a `#/login`.
 - Credenciales: `admin / admin123` o `consultor / consultor123`.
 - Después de login, la app puede abrir la última ruta visitada; si no es CxP, navegar explícitamente a `#/compras/cxp`.
-- IndexedDB: base `dualledger-maestros`, versión `4`. Cerrar pestañas viejas antes de nuevos upgrades.
+- IndexedDB: base `dualledger-maestros`, versión `5` (agrega el store `activosFijos`). Cerrar pestañas viejas antes de nuevos upgrades.
 - La carpeta `C:\Users\PC\Desktop\DualLedger-main` ya es un repositorio Git en la rama `Develop`, con tracking hacia `origin/Develop` y el árbol de trabajo limpio.
 
 ### Secciones aún pendientes
 
-- `compras/activos-fijos` → sigue con `PlaceholderView`.
+- `compras/activos-fijos` → **implementado** (ver §10).
 - `compras/retenciones-trabajadores` → sigue con `PlaceholderView`.
 - CxP pagos/abonos → **decidido no implementar** por ahora (el usuario eligió solo consulta derivada).
 - Si en el futuro se quiere CxP con pagos, seguir el patrón de `Documentos no fiscales`:
@@ -235,3 +237,54 @@ Archivo: `ANALISIS-MODULO-COMPRAS.md`, §10.
 - Pregunta #7: «Uso de Forma de pago (contado/crédito) → ¿genera CxP?»
 - Respuesta aplicada: CxP se deriva de la fecha de vencimiento o de los días de crédito; la «Condición (CxP)` del manual se usa para detectar documentos pagados.
 - El manual no define más reglas de CxP, así que no se inventaron campos.
+
+---
+
+## 10. Activos Fijos (implementado)
+
+El manual de Compras **no describe** este módulo; venía como `PlaceholderView` en el diseño general.
+Se construyó con el mismo patrón offline-first que los maestros anteriores.
+
+### Archivos nuevos
+
+| Archivo | Contenido |
+|---|---|
+| `src/services/activosFijos.js` | Helpers puros: catálogos, normalización, validación, depreciación, filtros, resumen y CSV. |
+| `src/stores/activosFijosDb.js` | Store local en IndexedDB (`saveActivosFijos`, `getActivosFijos`, `countActivosFijos`). |
+| `src/components/ActivosFijosView.vue` | Vista de listado + ficha con tres pestañas: Datos, Depreciación y Contabilidad. |
+| `tests/activosFijos.test.mjs` | 17 pruebas de la lógica pura. |
+| `server/migrations/0006_activos_fijos.sql` | Tabla `activos_fijos`, índices y trigger de `updated_at`. |
+
+### Archivos modificados
+
+- `src/stores/maestrosDb.js`: versión `5` y nuevo store `activosFijos` (índices `codigo`, `categoria`,
+  `estado` y `fechaAdquisicion`).
+- `src/router/index.js`: `compras/activos-fijos` usa `ActivosFijosView` en vez de `PlaceholderView`.
+- `server/index.js`: rutas `GET /activos-fijos`, `POST /activos-fijos/sync` y
+  `POST /activos-fijos/delete`, con el mismo patrón que `/articulos`.
+- `README.md` y `CHANGELOG.md`: documentación y conteo de pruebas.
+
+### Reglas de negocio
+
+- **Costo total** = `costoAdquisicion + gastosCapitalizables`.
+- **Base depreciable** = `costoTotal − valorResidual` (nunca negativa).
+- **Tasa anual**: explícita si se indicó; si no, `100 / vidaUtilAnos` (línea recta) o
+  `200 / vidaUtilAnos` (saldo decreciente).
+- **Depreciación**: se calcula por meses completos desde la puesta en servicio, se detiene al
+  cumplir la vida útil y nunca supera la base depreciable.
+- **No deprecian**: categoría «Terrenos» o método «No deprecia».
+- El valor neto es `costoTotal − depreciación acumulada`, con piso en el valor residual.
+- La depreciación **no se guarda**: siempre se deriva; por eso no hay columnas de depreciación
+  en la migración.
+- Cuentas contables vinculadas: activo, depreciación acumulada y gasto por depreciación, más
+  centro de costo. Se seleccionan del plan de cuentas con `AccountSelector`.
+
+### Verificación en navegador
+
+- Ruta `#/compras/activos-fijos` carga la vista real (ya no el placeholder).
+- Alta de prueba `AF-TEST-001` con costo 1000 + 100 de gastos, residual 100 y vida útil 10:
+  costo total `Bs 1.100,00`, base `Bs 1.000,00`, tasa `10 %`, depreciación mensual `Bs 8,33`,
+  acumulada `Bs 183,33` y valor neto `Bs 916,67` (22 meses hasta la fecha actual).
+- Tabla anual, exportación CSV, impresión y resumen correctos.
+- El registro de prueba y los 2 pendientes de `syncQueue` generados por la verificación se
+  eliminaron; no quedan datos nuevos.
