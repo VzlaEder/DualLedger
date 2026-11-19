@@ -18,7 +18,7 @@ Este archivo resume todo el trabajo realizado en el módulo **Compras** para que
   - PostgreSQL: **solo crear `.env`**, sin instalar Docker/PostgreSQL.
   - Documentos no fiscales: **módulo propio offline-first**.
   - CxP: **solo consulta derivada, sin registrar pagos/abonos**.
-- No usar OCR en runtime; el OCR solo se usó durante el desarrollo para leer el manual.
+- No se agregó OCR nuevo en runtime en las secciones construidas. La app ya tenía su propio OCR en `src/utils/ocr.js` para el flujo «Procesar»; Tesseract se usó solo como herramienta de desarrollo para leer el manual.
 
 ---
 
@@ -74,9 +74,10 @@ Este archivo resume todo el trabajo realizado en el módulo **Compras** para que
 
 | Archivo | Rutas |
 |---|---|
-| `server/routes/proveedores.js` | `GET /proveedores`, `/proveedores/sync`, `/proveedores/delete` |
-| `server/routes/documentosNoFiscales.js` | `GET /documentos-no-fiscales`, `/sync`, `/delete` |
-| `server/routes/articulos.js` | `GET /articulos`, `/sync`, `/delete` |
+| `server/index.js` | SENIAT (`/captcha`, `/lookup`, `/verify`), maestros (`/accounts*`, `/conceptos_islr*`, `/proveedores*`, `/documentos-no-fiscales*`, `/articulos*`, `/parametros*`) y admin DB (`/api/admin/*`) |
+| `server/routes/compras.js` | `GET/POST/PUT/DELETE /compras/documentos`, `/resumen`, `/:uid`, `/sync` |
+
+Nota: no existen archivos `server/routes/proveedores.js`, `documentosNoFiscales.js` ni `articulos.js`; esas rutas viven en `server/index.js`.
 
 ### Migraciones SQL
 
@@ -133,7 +134,11 @@ Se aplican solas cuando PostgreSQL esté disponible.
 4. **Relación de gastos — IVA no acreditable**
    - El crédito fiscal no deducible se separa del acreditable, pero se incluye en el gasto deducible.
 
-5. **CxP — signo de notas de crédito (último arreglo)**
+5. **ProcesarPanel — pestaña «Documentos»**
+   - `ComprasDocumentos` estaba importado pero no registrado en `components`.
+   - Se añadió al registro para que la pestaña renderice correctamente.
+
+6. **CxP — signo de notas de crédito**
    - Problema: CxP mostraba `Bs 2.070.818,72` mientras Relación de gastos mostraba `Bs 1.036.176,36`.
    - Causa: las notas de crédito ya están guardadas en negativo en el Libro y CxP las multiplicaba por `-1` otra vez.
    - Solución: en `lineaCxpDesdeDocumento()` se toman `total`, `igtf` y `retenciones` tal como vienen del Libro.
@@ -211,7 +216,7 @@ Se aplican solas cuando PostgreSQL esté disponible.
 - Credenciales: `admin / admin123` o `consultor / consultor123`.
 - Después de login, la app puede abrir la última ruta visitada; si no es CxP, navegar explícitamente a `#/compras/cxp`.
 - IndexedDB: base `dualledger-maestros`, versión `4`. Cerrar pestañas viejas antes de nuevos upgrades.
-- No hay repositorio git en `C:\Users\PC\Desktop\DualLedger-main`; todos los cambios están sin commitear.
+- La carpeta `C:\Users\PC\Desktop\DualLedger-main` ya es un repositorio Git en la rama `Develop`, con tracking hacia `origin/Develop` y el árbol de trabajo limpio.
 
 ### Secciones aún pendientes
 

@@ -492,7 +492,7 @@ DualLedger/
 | `npm start` | **Todo automático**: inicializa la BD + genera el build si falta `dist/` + sirve producción en `127.0.0.1:8787` (estático + `/api` + PostgreSQL, mismo origen) |
 | `npm run build` | Genera build de producción en `dist/` |
 | `npm run preview` | Vista previa del build de producción |
-| `npm test` | Ejecuta los tests unitarios con `node:test` (64 pruebas, 63 activas; el plan de cuentas se omite si falta el `.xls`) |
+| `npm test` | Ejecuta los tests unitarios con `node:test` (75 pruebas, 74 activas; el plan de cuentas se omite si falta el `.xls`) |
 
 > [!TIP]
 > Para **pruebas rápidas** solo necesitas `npm run dev`. La base de datos se inicializa sola
