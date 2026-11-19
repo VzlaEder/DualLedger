@@ -4,20 +4,36 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "postinstall": "node scripts/ensure-server-deps.mjs",
+    "predev": "node server/init-db.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "node --watch server/index.js",
+    "dev:web": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "prestart": "node server/init-db.mjs",
+    "start": "node server/index.js",
+    "start:api": "node server/index.js",
+    "start:web": "vite preview",
+    "preview": "vite preview",
+    "test": "node --test tests/"
   },
   "dependencies": {
-    "vue": "^3.4.0",
+    "idb": "^8.0.0",
+    "pdfjs-dist": "^6.3.289",
     "tesseract.js": "^5.1.0",
-    "xlsx": "^0.18.5",
-    "idb": "^8.0.0"
+    "vue": "^3.4.0",
+    "vue-router": "^4.6.4",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@vitejs/plugin-vue": "^5.0.0",
-    "vite": "^5.4.0",
-    "vite-plugin-pwa": "^0.20.0",
-    "workbox-window": "^7.0.0"
+    "vite": "^6.4.5",
+    "vite-plugin-pwa": "^0.21.2",
+    "workbox-window": "^7.4.1"
+  },
+  "overrides": {
+    "workbox-build": "^7.4.1",
+    "glob": "^14.0.6"
   }
 }

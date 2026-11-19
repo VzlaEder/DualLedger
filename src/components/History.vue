@@ -41,6 +41,7 @@
 
 <script>
 import { getAllRecords, deleteRecord } from '../stores/db.js'
+import { showConfirm, showToast } from '../utils/dialog.js'
 
 export default {
   name: 'History',
@@ -60,18 +61,28 @@ export default {
     },
 
     async handleDelete(id) {
-      if (confirm('¿Eliminar este registro del historial?')) {
+      const confirmed = await showConfirm('¿Eliminar este registro del historial?', {
+        confirmText: 'Eliminar',
+        danger: true
+      })
+      if (confirmed) {
         await deleteRecord(id)
         this.records = this.records.filter(r => r.id !== id)
+        showToast('Registro del historial eliminado')
       }
     },
 
     async clearAll() {
-      if (confirm('¿Eliminar todo el historial?')) {
+      const confirmed = await showConfirm('¿Eliminar todo el historial?', {
+        confirmText: 'Eliminar todo',
+        danger: true
+      })
+      if (confirmed) {
         for (const r of this.records) {
           await deleteRecord(r.id)
         }
         this.records = []
+        showToast('Historial eliminado')
       }
     },
 
@@ -92,7 +103,7 @@ export default {
       return 'Bs. ' + new Intl.NumberFormat('es-VE', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
-      }).format(val)
+      }).format(Math.abs(val))
     }
   }
 }
@@ -157,7 +168,7 @@ export default {
 }
 
 .card-dates { font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px; }
-.card-date { font-size: 0.72rem; color: var(--text-secondary); margin-top: 6px; opacity: 0.7; }
+.card-date { font-size: 0.72rem; color: var(--text-secondary); margin-top: 6px; opacity: 0.9; }
 
 .icon-btn {
   width: 32px;
@@ -172,8 +183,8 @@ export default {
   flex-shrink: 0;
 }
 
-.icon-btn.delete { background: rgba(176, 0, 32, 0.08); color: var(--error); }
-.icon-btn.delete:hover { background: rgba(176, 0, 32, 0.15); }
+.icon-btn.delete { background: rgba(var(--error-rgb), 0.08); color: var(--error); }
+.icon-btn.delete:hover { background: rgba(var(--error-rgb), 0.15); }
 
 .btn {
   width: 100%;
@@ -187,10 +198,10 @@ export default {
 }
 
 .btn-clear {
-  background: rgba(176, 0, 32, 0.08);
+  background: rgba(var(--error-rgb), 0.08);
   color: var(--error);
-  border: 1px solid rgba(176, 0, 32, 0.2);
+  border: 1px solid rgba(var(--error-rgb), 0.2);
 }
 
-.btn-clear:hover { background: rgba(176, 0, 32, 0.12); }
+.btn-clear:hover { background: rgba(var(--error-rgb), 0.12); }
 </style>

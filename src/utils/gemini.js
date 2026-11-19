@@ -1,8 +1,9 @@
 import { PRINT_EXTRACTION_PROMPT, INVOICE_EXTRACTION_PROMPT } from './prompts'
 import { getApiKey } from './apiKey'
-import { createEmptyRecord } from './parse'
+import { createEmptyRecord, sanitizeControlNumber, parseAmount, normalizeTipoDocumento, applyNotaAdjustments } from './parse'
 
-const GEMINI_MODEL = 'gemini-3.1-flash-lite'
+const GEMINI_MODEL = 'gemini-3.5-flash-lite'
+const GEMINI_CAPTCHA_MODEL = 'gemini-3.5-flash-lite'
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
 const MAX_RETRIES = 3
@@ -46,8 +47,7 @@ export async function recognizeWithGemini(imageFile, onProgress, options = {}) {
     onProgress({ status: 'convirtiendo imagen', progress: 0.1 })
   }
 
-  const base64 = await fileToBase64(imageFile)
-  const mimeType = imageFile.type || 'image/jpeg'
+  const { mimeType, data: base64 } = await prepareImageForGemini(imageFile)
 
   if (onProgress) {
     onProgress({ status: 'enviando a Gemini', progress: 0.3 })
@@ -104,6 +104,7 @@ export async function recognizeWithGemini(imageFile, onProgress, options = {}) {
 
   if (!response.ok) {
     const errorBody = await response.text()
+    console.error('[Gemini] HTTP', response.status, 'body:', errorBody)
     let serverMsg = ''
     try {
       const info = JSON.parse(errorBody)
@@ -155,6 +156,82 @@ export async function recognizeWithGemini(imageFile, onProgress, options = {}) {
   }
 }
 
+export async function transcribeCaptchaWithGemini(base64Image, { signal } = {}) {
+  const credential = getApiKey()
+  if (!credential) {
+    throw new Error('No hay credencial de Gemini configurada')
+  }
+
+  const requestBody = {
+    contents: [{
+      parts: [
+        { text: 'Esto es una imagen CAPTCHA. Transcribe EXACTAMENTE los caracteres visibles (letras y/o números), sin espacios, sin signos, sin texto adicional. Responde SOLO con los caracteres, máximo 10.' },
+        {
+          inline_data: {
+            mime_type: 'image/jpeg',
+            data: base64Image
+          }
+        }
+      ]
+    }],
+    generationConfig: {
+      temperature: 0,
+      max_output_tokens: 20
+    }
+  }
+
+  const captchaApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_CAPTCHA_MODEL}:generateContent?key=${encodeURIComponent(credential)}`
+
+  let lastError = null
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (signal && signal.aborted) throw Object.assign(new Error('Verificación cancelada'), { name: 'AbortError' })
+
+    if (attempt > 0) {
+      await new Promise(r => setTimeout(r, RETRY_DELAY_MS * attempt))
+    }
+
+    const res = await fetch(captchaApiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      body: JSON.stringify(requestBody),
+      cache: 'no-store',
+      signal
+    })
+
+    if (res.status === 503) {
+      lastError = 'Gemini sobrecargado temporalmente'
+      continue
+    }
+
+    if (res.status === 401) {
+      throw new Error('Credencial de Gemini expirada. El token "AQ" caduca, genera uno nuevo en Google AI Studio.')
+    }
+
+    if (res.status === 403) {
+      throw new Error('Credencial de Gemini sin permisos. Verifica tu cuenta en Google AI Studio.')
+    }
+
+    if (!res.ok) {
+      const errorBody = await res.text()
+      let serverMsg = ''
+      try {
+        const info = JSON.parse(errorBody)
+        if (info && info.error && info.error.message) serverMsg = ` (${info.error.message})`
+      } catch (e) { /* noop */ }
+      throw new Error(`Error de Gemini al transcribir el captcha (${res.status})${serverMsg}`)
+    }
+
+    const data = await res.json()
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+      throw new Error('Respuesta vacía de Gemini para el captcha')
+    }
+
+    return data.candidates[0].content.parts.map(p => p.text).join('').trim()
+  }
+
+  throw lastError || new Error('Gemini no disponible tras reintentos')
+}
+
 function parseGeminiResponse(text) {
   let cleaned = text.trim()
 
@@ -188,14 +265,16 @@ function mapToRecord(json) {
   })
   record.confidencias = confidencias
 
-  record.tipoDocumento = json.tipoDocumento || ''
+  record.tipoDocumento = normalizeTipoDocumento(json.tipoDocumento)
   record.rif = json.rif || ''
   record.nombreRazon = json.nombreRazon || ''
   record.fecha = json.fecha || ''
   record.nroFactura = cleanDocNumber(json.nroFactura)
-  record.nroControl = cleanDocNumber(json.nroControl)
+  record.nroControl = cleanControlNumber(json.nroControl)
+  record.numeroMaquinaFiscal = json.numeroMaquinaFiscal || ''
   record.nroNotaCredito = cleanDocNumber(json.nroNotaCredito)
   record.nroNotaDebito = cleanDocNumber(json.nroNotaDebito)
+  record.nroFacturaAfectada = cleanDocNumber(json.nroFacturaAfectada)
   record.totalComprasIVA = parseNumber(json.totalComprasIVA)
   record.baseNacional = parseNumber(json.baseImponible)
   record.igtf = parseNumber(json.igtf)
@@ -212,6 +291,11 @@ function mapToRecord(json) {
     record.creditoFiscalNac = Math.round(record.baseNacional * 0.16 * 100) / 100
   }
 
+  const ctx = [json.tipoDocumento, json.nombreRazon, json.rif, json.nroControl, json.numeroMaquinaFiscal].filter(Boolean).join(' ')
+  sanitizeControlNumber(record, ctx, json.numeroMaquinaFiscal)
+
+  applyNotaAdjustments(record)
+
   return record
 }
 
@@ -226,20 +310,17 @@ function cleanDocNumber(value) {
   return out
 }
 
+function cleanControlNumber(value) {
+  if (!value) return ''
+  const raw = String(value).trim()
+  if (/^00[-.]?0$/.test(raw)) return '00-0'
+  return raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+}
+
 function parseNumber(value) {
   if (value === null || value === undefined || value === '') return 0
   if (typeof value === 'number') return value
-  const cleaned = String(value)
-    .replace(/[^\d.,\-]/g, '')
-    .replace(/\./g, match => match)
-  if (cleaned.includes(',') && cleaned.includes('.')) {
-    return parseFloat(cleaned.replace(/,/g, '')) || 0
-  }
-  if (cleaned.includes(',')) {
-    const asDot = cleaned.replace(',', '.')
-    return parseFloat(asDot) || 0
-  }
-  return parseFloat(cleaned) || 0
+  return parseAmount(String(value).replace(/[^\d.,\-]/g, ''))
 }
 
 function formatAsText(record) {
@@ -268,4 +349,93 @@ function fileToBase64(file) {
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
+}
+
+const MAX_IMAGE_DIMENSION = 2048
+const MAX_IMAGE_BYTES = 19 * 1024 * 1024
+
+function resizeImage(img) {
+  const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(img.naturalWidth, img.naturalHeight))
+  const width = Math.max(1, Math.round(img.naturalWidth * scale))
+  const height = Math.max(1, Math.round(img.naturalHeight * scale))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, width, height)
+  ctx.drawImage(img, 0, 0, width, height)
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('No se pudo comprimir la imagen'))
+        return
+      }
+      resolve(blob)
+    }, 'image/jpeg', 0.9)
+  })
+}
+
+function fileToImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(img)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('No se pudo cargar la imagen'))
+    }
+    img.src = url
+  })
+}
+
+function bytesFromBase64(base64) {
+  return Math.floor(base64.length * 3 / 4)
+}
+
+async function prepareImageForGemini(imageFile) {
+  if (typeof document === 'undefined') {
+    const base64 = await fileToBase64(imageFile)
+    return { mimeType: imageFile.type || 'image/jpeg', data: base64 }
+  }
+
+  const baseMime = imageFile.type || 'image/jpeg'
+  const needsConversion = baseMime !== 'image/jpeg' && baseMime !== 'image/pjpeg'
+
+  const img = await fileToImage(imageFile)
+  const maxSide = Math.max(img.naturalWidth, img.naturalHeight)
+  const needsResize = maxSide > MAX_IMAGE_DIMENSION
+
+  let blob
+  if (needsResize || needsConversion) {
+    blob = await resizeImage(img)
+  }
+
+  let mimeType
+  let base64
+  if (blob) {
+    mimeType = 'image/jpeg'
+    base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result.split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  } else {
+    base64 = await fileToBase64(imageFile)
+    mimeType = baseMime
+  }
+
+  if (bytesFromBase64(base64) > MAX_IMAGE_BYTES) {
+    throw new Error('La imagen es demasiado grande para Gemini incluso comprimida (más de 19MB).')
+  }
+
+  return { mimeType, data: base64 }
 }

@@ -26,6 +26,16 @@ export function parseReportData(lines, fullText) {
     if (fallback.length > 0) records.push(...fallback)
   }
 
+  const afectadaFull = fullText && fullText.match(/(?:H\s*F\s*A\.?\s*C|FACTURA\s*AFECTADA|DOC(?:UMENTO)?\s*AFECTADO)\s*[:.]?\s*([0-9][0-9A-Za-z\-]*)/i)
+
+  for (const record of records) {
+    const esNota = record.tipoDocumento === 'nota_credito' || record.tipoDocumento === 'nota_debito'
+    if (esNota && !record.nroFacturaAfectada && afectadaFull) {
+      record.nroFacturaAfectada = normalizeDocNumber(afectadaFull[1])
+    }
+    applyNotaAdjustments(record)
+  }
+
   return records
 }
 
@@ -72,6 +82,14 @@ function isRecordStart(line) {
 function parseBlock(blockLines) {
   const text = blockLines.join('\n')
   const record = createEmptyRecord()
+
+  if (/NOTA\s*DE\s*CR[EÉ]DITO/i.test(text)) {
+    record.tipoDocumento = 'nota_credito'
+  } else if (/NOTA\s*DE\s*D[EÉ]BITO/i.test(text)) {
+    record.tipoDocumento = 'nota_debito'
+  } else if (/REPORTE\s*Z|CIERRE\s*Z|COMPROBANTE\s*Z/i.test(text)) {
+    record.tipoDocumento = 'reporte_z'
+  }
 
   const totalMatch = text.match(/^(?:TOTAL|TOT)\b.*?(?:Bs\.?)?\s*[:.]?\s*([\d.,]+)/im)
   if (totalMatch) {
@@ -132,8 +150,15 @@ function parseBlock(blockLines) {
 
   const controlNum = extractDocNumber(blockLines, /CONTROL\b/i)
   if (controlNum) {
-    record.nroControl = normalizeDocNumber(controlNum)
+    record.nroControl = normalizeControlNumber(controlNum)
   }
+
+  const afectadaMatch = text.match(/(?:H\s*F\s*A\.?\s*C|FACTURA\s*AFECTADA|DOC(?:UMENTO)?\s*AFECTADO)\s*[:.]?\s*([0-9][0-9A-Za-z\-]*)/i)
+  if (afectadaMatch) {
+    record.nroFacturaAfectada = normalizeDocNumber(afectadaMatch[1])
+  }
+
+  sanitizeControlNumber(record, text)
 
   const igtfMatch = text.match(/IGTF\s*[:.]?\s*([\d.,]+)/i)
   if (igtfMatch) {
@@ -145,7 +170,7 @@ function parseBlock(blockLines) {
     record.retIVA = parseAmount(retMatch[1])
   }
 
-  const hasDocNum = record.nroNotaCredito || record.nroNotaDebito || record.nroFactura || record.nroControl
+  const hasDocNum = record.nroNotaCredito || record.nroNotaDebito || record.nroFactura
   if (record.totalComprasIVA <= 0 && !hasDocNum) {
     return null
   }
@@ -185,14 +210,51 @@ function extractIssuer(blockLines) {
   }
 }
 
+export const TIPOS_DOCUMENTO = ['factura', 'nota_credito', 'nota_debito', 'reporte_z', 'otro']
+
+export function normalizeTipoDocumento(value) {
+  const raw = String(value || '').toLowerCase().trim()
+  if (!raw) return 'factura'
+  return TIPOS_DOCUMENTO.includes(raw) ? raw : 'factura'
+}
+
+const CAMPOS_MONTOS = [
+  'totalComprasIVA', 'noGravadas', 'baseNacional', 'creditoFiscalNac',
+  'baseImportacion', 'creditoFiscalImp', 'igtf', 'retIVA'
+]
+
+export function applyNotaAdjustments(record) {
+  if (record.tipoDocumento !== 'nota_credito' && record.tipoDocumento !== 'nota_debito') {
+    return record
+  }
+
+  if (!record.nroFacturaAfectada && record.nroFactura) {
+    record.nroFacturaAfectada = record.nroFactura
+  }
+  record.nroFactura = ''
+
+  if (record.tipoDocumento === 'nota_credito') {
+    for (const key of CAMPOS_MONTOS) {
+      if (typeof record[key] === 'number' && record[key] !== 0) {
+        record[key] = -Math.abs(record[key])
+      }
+    }
+  }
+
+  return record
+}
+
 export function createEmptyRecord() {
   return {
     nro: 1,
+    tipoDocumento: 'factura',
     fecha: '',
     rif: '',
     nombreRazon: '',
+    porcentajeContribucion: '',
     nroFactura: '',
     nroControl: '',
+    numeroMaquinaFiscal: '',
     nroNotaDebito: '',
     nroNotaCredito: '',
     tipoTransaccion: '01 -Reg',
@@ -262,6 +324,65 @@ function normalizeDocNumber(value) {
     }
   }
   return out
+}
+
+const CONTROL_SENTINEL = '00-0'
+
+function normalizeControlNumber(value) {
+  if (!value) return ''
+  const raw = String(value).trim()
+  if (/^00[-.]?0$/.test(raw)) return CONTROL_SENTINEL
+  return raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+}
+
+const REPORTE_Z_RE = /REPORTE\s*Z|CIERRE\s*Z|COMPROBANTE\s*Z/i
+const MAQUINA_FISCAL_RE = /M[AÁ]QUINA\s*FISCAL|#?\s*CONTROL\s*\/\s*SERIAL\s*IF/i
+const CONTROL_PREFIX_RE = /(?:NRO\.?\s*)?(?:COO|COD|CONTROL)\s*[:.]\s*([0-9][0-9\-. ]*[0-9]|[0-9])/i
+const SERIAL_MAQUINA_RE = /^(ZZ[A-Z]|Z\d[A-Z])[A-Z0-9]*/i
+const SERIAL_MAQUINA_ANY_RE = /(?:ZZ[A-Z]|Z\d[A-Z])[A-Z0-9]{3,}/i
+const SERIAL_MAQUINA_LABEL_RE = /(?:SERIAL|SERIE|NRO?\s*M[AÁ]QUINA|M[AÁ]QUINA\s*FISCAL|#?\s*CONTROL\s*\/\s*SERIAL\s*IF)\s*[:.?#]?\s*([A-Z0-9\-]{4,})/i
+
+function looksLikeSerialMaquina(value) {
+  if (!value) return false
+  return SERIAL_MAQUINA_RE.test(String(value))
+}
+
+export function sanitizeControlNumber(record, text, serialCandidate) {
+  const source = text || ''
+  const serialCandidateClean = serialCandidate
+    ? String(serialCandidate).replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+    : ''
+
+  const isReporteZ = record.tipoDocumento === 'reporte_z' || REPORTE_Z_RE.test(source)
+  const hasSerial = looksLikeSerialMaquina(record.nroControl) ||
+    looksLikeSerialMaquina(serialCandidateClean) ||
+    SERIAL_MAQUINA_ANY_RE.test(source)
+  const isFiscal = isReporteZ || MAQUINA_FISCAL_RE.test(source) || hasSerial
+
+  const controlMatch = source.match(CONTROL_PREFIX_RE)
+  if (controlMatch && controlMatch[1]) {
+    record.nroControl = controlMatch[1].replace(/[^0-9]/g, '')
+  }
+
+  const serialLabelMatch = source.match(SERIAL_MAQUINA_LABEL_RE)
+  if (serialLabelMatch && serialLabelMatch[1]) {
+    record.numeroMaquinaFiscal = serialLabelMatch[1].toUpperCase()
+  } else if (looksLikeSerialMaquina(record.nroControl)) {
+    record.numeroMaquinaFiscal = record.nroControl
+    record.nroControl = ''
+  } else if (!record.numeroMaquinaFiscal && serialCandidateClean && isFiscal) {
+    record.numeroMaquinaFiscal = serialCandidateClean
+  }
+
+  if (isFiscal && !record.nroControl) {
+    record.nroControl = CONTROL_SENTINEL
+  }
+
+  if (!isFiscal) {
+    record.numeroMaquinaFiscal = ''
+  }
+
+  return record
 }
 
 function tryParseFallback(fullText) {

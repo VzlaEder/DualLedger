@@ -1,0 +1,18 @@
+{
+  "name": "dualledger-server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "API DualLedger - servicio independiente del frontend (SENIAT, maestros y Libro de Compras)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "migrate": "node migrate.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.0",
+    "pg": "^8.13.0"
+  }
+}

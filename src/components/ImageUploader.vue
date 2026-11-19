@@ -12,7 +12,7 @@
         <input
           ref="fileInput"
           type="file"
-          accept="image/*"
+          accept="image/*,application/pdf"
           multiple
           @change="handleFileSelect"
           style="display: none"
@@ -20,9 +20,9 @@
 
         <div class="upload-placeholder">
           <div class="upload-icon">&#128247;</div>
-          <p class="upload-title">Sube imágenes de documentos</p>
-          <p class="upload-hint">Selecciona una o varias imágenes a la vez</p>
-          <p class="upload-formats">JPG, PNG - Max 10MB cada una</p>
+          <p class="upload-title">Sube imágenes o PDF de documentos</p>
+          <p class="upload-hint">Selecciona uno o varios archivos a la vez</p>
+          <p class="upload-formats">JPG, PNG - Max 10MB | PDF - Max 25MB</p>
         </div>
       </div>
 
@@ -34,7 +34,11 @@
 
         <div class="queue-list">
           <div v-for="(item, index) in queue" :key="index" class="queue-item">
-            <img :src="item.previewUrl" class="queue-thumb" />
+            <div class="queue-thumb-wrap" @click.stop="openPreview(item)">
+              <img v-if="item.previewUrl" :src="item.previewUrl" class="queue-thumb" :alt="item.file.name" />
+              <div v-else class="queue-thumb pdf-thumb">PDF</div>
+              <span v-if="item.isPdf && item.pages" class="thumb-badge">{{ item.pages }}</span>
+            </div>
             <div class="queue-info">
               <p class="queue-name">{{ item.file.name }}</p>
               <div class="queue-meta">
@@ -77,7 +81,8 @@
         <li>La imagen debe estar bien iluminada</li>
         <li>Evita sombras sobre el texto</li>
         <li>El documento debe estar recto, sin dobleces</li>
-        <li>Puedes subir varias imágenes de una sola vez</li>
+        <li>Puedes subir varios archivos de una sola vez</li>
+        <li>En PDF, cada página se procesa por separado</li>
         <li>Formatos aceptados: facturas, reportes Z, notas de crédito/débito</li>
       </ul>
     </div>
@@ -92,10 +97,27 @@
         <span class="chip">Libro de Compras</span>
       </div>
     </div>
+
+    <div v-if="previewItem" class="preview-modal" @click="closePreview">
+      <div class="preview-modal-inner" @click.stop>
+        <button class="preview-close" @click="closePreview" title="Cerrar">&#10005;</button>
+        <iframe
+          v-if="previewItem.isPdf"
+          :src="previewItem.pdfUrl"
+          class="preview-frame"
+          title="Vista previa del PDF"
+        ></iframe>
+        <img v-else :src="previewItem.previewUrl" class="preview-media" :alt="previewItem.file.name" />
+        <p class="preview-name">{{ previewItem.file.name }}</p>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
+import { renderPdfThumbnail } from '../utils/ocr.js'
+import { showAlert } from '../utils/dialog.js'
+
 export default {
   name: 'ImageUploader',
   emits: ['process-start'],
@@ -104,7 +126,8 @@ export default {
       queue: [],
       isDragOver: false,
       processing: false,
-      processedCount: 0
+      processedCount: 0,
+      previewItem: null
     }
   },
   computed: {
@@ -128,21 +151,65 @@ export default {
 
     handleDrop(e) {
       this.isDragOver = false
-      const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))
+      const files = Array.from(e.dataTransfer.files).filter(f =>
+        (f.type || '').startsWith('image/') || f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '')
+      )
       files.forEach(f => this.addToQueue(f))
     },
 
     addToQueue(file) {
-      if (file.size > 10 * 1024 * 1024) {
-        alert(`${file.name} es demasiado grande. Máximo 10MB.`)
+      const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')
+      if (!isPdf && !(file.type || '').startsWith('image/')) {
+        showAlert(`${file.name} no es una imagen ni un PDF.`, { type: 'warning' })
         return
       }
-      this.queue.push({
+      const maxSize = isPdf ? 25 * 1024 * 1024 : 10 * 1024 * 1024
+      if (file.size > maxSize) {
+        showAlert(`${file.name} es demasiado grande. Máximo ${isPdf ? '25MB' : '10MB'}.`, { type: 'warning' })
+        return
+      }
+      const item = {
         file,
-        previewUrl: URL.createObjectURL(file),
+        previewUrl: isPdf ? '' : URL.createObjectURL(file),
+        isPdf,
+        pdfUrl: isPdf ? URL.createObjectURL(file) : '',
+        pages: null,
+        thumbLoading: isPdf,
         status: 'pending',
         handwritten: false
-      })
+      }
+      this.queue.push(item)
+      if (isPdf) this.loadPdfThumb(item)
+    },
+
+    async loadPdfThumb(item) {
+      try {
+        const { url, numPages } = await renderPdfThumbnail(item.file)
+        if (!this.queue.includes(item)) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        item.previewUrl = url
+        item.pages = numPages
+      } catch (e) {
+        console.warn('[PDF] No se pudo generar la miniatura:', e)
+      } finally {
+        item.thumbLoading = false
+      }
+    },
+
+    openPreview(item) {
+      this.previewItem = item
+    },
+
+    closePreview() {
+      this.previewItem = null
+    },
+
+    revokeItem(item) {
+      if (!item) return
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      if (item.pdfUrl) URL.revokeObjectURL(item.pdfUrl)
     },
 
     toggleHandwritten(item) {
@@ -150,12 +217,15 @@ export default {
     },
 
     removeFromQueue(index) {
-      URL.revokeObjectURL(this.queue[index].previewUrl)
+      const item = this.queue[index]
+      if (this.previewItem === item) this.previewItem = null
+      this.revokeItem(item)
       this.queue.splice(index, 1)
     },
 
     clearQueue() {
-      this.queue.forEach(i => URL.revokeObjectURL(i.previewUrl))
+      this.previewItem = null
+      this.queue.forEach(i => this.revokeItem(i))
       this.queue = []
     },
 
@@ -190,7 +260,7 @@ export default {
   },
 
   beforeUnmount() {
-    this.queue.forEach(i => URL.revokeObjectURL(i.previewUrl))
+    this.queue.forEach(i => this.revokeItem(i))
   }
 }
 </script>
@@ -219,7 +289,7 @@ export default {
 
 .drop-zone.dragover {
   border-color: var(--primary);
-  background: rgba(26, 35, 126, 0.04);
+  background: rgba(var(--primary-rgb), 0.04);
 }
 
 .upload-placeholder { text-align: center; padding: 24px; }
@@ -265,12 +335,111 @@ export default {
   border-radius: 8px;
 }
 
-.queue-thumb {
+.queue-thumb-wrap {
+  position: relative;
   width: 44px;
   height: 44px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.queue-thumb {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   border-radius: 6px;
-  flex-shrink: 0;
+  display: block;
+}
+
+.pdf-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--error-rgb), 0.12);
+  color: var(--error);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.thumb-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: white;
+  font-size: 0.62rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--surface);
+  box-sizing: content-box;
+}
+
+.preview-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.preview-modal-inner {
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 12px;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(var(--error-rgb), 0.12);
+  color: var(--error);
+  font-size: 0.9rem;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.preview-frame,
+.preview-media {
+  max-width: 86vw;
+  max-height: 78vh;
+  width: 86vw;
+  height: 78vh;
+  border: none;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.preview-media {
+  width: auto;
+  height: auto;
+}
+
+.preview-name {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  text-align: center;
+  word-break: break-word;
 }
 
 .queue-info { flex: 1; min-width: 0; }
@@ -323,10 +492,10 @@ export default {
 }
 
 .handwritten-toggle.active {
-  background: rgba(255, 109, 0, 0.15);
+  background: rgba(var(--accent-rgb), 0.15);
   color: var(--accent);
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(255, 109, 0, 0.2);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.2);
 }
 
 .remove-queue-btn {
@@ -334,7 +503,7 @@ export default {
   height: 28px;
   border: none;
   border-radius: 50%;
-  background: rgba(176, 0, 32, 0.08);
+  background: rgba(var(--error-rgb), 0.08);
   color: var(--error);
   font-size: 0.8rem;
   cursor: pointer;
@@ -389,11 +558,25 @@ export default {
 .type-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .chip {
-  background: rgba(26, 35, 126, 0.08);
+  background: rgba(var(--primary-rgb), 0.08);
   color: var(--primary);
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 0.78rem;
   font-weight: 500;
+}
+
+@media (max-width: 600px) {
+  .drop-zone {
+    margin: 10px;
+    min-height: 140px;
+  }
+
+  .upload-placeholder { padding: 18px; }
+  .upload-icon { font-size: 2.4rem; }
+  .queue-section { padding: 0 10px 12px; }
+  .tips-card { padding: 14px; }
+  .preview-modal { padding: 10px; }
+  .preview-modal-inner { padding: 8px; }
 }
 </style>

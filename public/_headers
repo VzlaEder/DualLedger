@@ -1,0 +1,13 @@
+# Cloudflare Pages: reglas de cacheo
+# El service worker nunca debe quedar cacheado en el borde, para que las
+# actualizaciones de la PWA se apliquen en la siguiente visita.
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/manifest.webmanifest
+  Content-Type: application/manifest+json
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Los assets de Vite llevan hash en el nombre: se pueden cachear para siempre.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
